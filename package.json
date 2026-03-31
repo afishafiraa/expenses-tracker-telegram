@@ -1,0 +1,36 @@
+{
+  "name": "billnot",
+  "version": "2.0.0",
+  "description": "Telegram bill tracking bot with Gemini AI",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:build": "npm run build && node dist/index.js",
+    "dev": "NODE_ENV=development tsx watch src/index.ts",
+    "test": "tsx src/test-gemini.ts",
+    "test:sheets": "tsx src/test-sheets.ts"
+  },
+  "keywords": [
+    "telegram",
+    "bill-tracking",
+    "gemini",
+    "expense-tracker"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "googleapis": "^140.0.1",
+    "node-telegram-bot-api": "^0.66.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/node-telegram-bot-api": "^0.64.7",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

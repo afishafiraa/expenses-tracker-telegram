@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+.git
+.gitignore
+.claude
+.wwebjs_auth
+.wwebjs_cache
+.DS_Store
+docs
+exports
+*.log
+*.md
+config/
+check-permissions.js
+test-sheets-auth.js

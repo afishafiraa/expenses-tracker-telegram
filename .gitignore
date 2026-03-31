@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.wwebjs_auth/
+.wwebjs_cache/
+config/
+*.log
+/exports/
+.DS_Store
+.claude/
+gha-key.json
+package-lock.json
+yarn.lock
