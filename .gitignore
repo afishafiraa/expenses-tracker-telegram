@@ -9,5 +9,3 @@ config/
 .DS_Store
 .claude/
 gha-key.json
-package-lock.json
-yarn.lock
