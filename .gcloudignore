@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.*
+.git/
+.wwebjs_auth/
+.wwebjs_cache/
+.claude/
+.DS_Store
+docs/
+exports/
+config/
+*.log
+*.md
+gha-key.json
+check-permissions.js
+test-sheets-auth.js

@@ -137,17 +137,18 @@ async function startup() {
     console.log('💬 Bot is polling for messages...\n');
     exchangeRateInterval = exchangeRateService.scheduleDailyUpdates();
   } else {
-    if (!WEBHOOK_URL) {
-      console.error('❌ WEBHOOK_URL is required in production mode');
-      process.exit(1);
-    }
-
+    // Start HTTP server first (Cloud Run needs a listening port)
     server = createHttpServer();
 
-    const webhookUrl = `${WEBHOOK_URL}/webhook/${BOT_TOKEN}`;
-    await bot.setWebHook(webhookUrl);
-    console.log(`🚀 BillNot started in WEBHOOK mode`);
-    console.log(`🔗 Webhook registered: ${WEBHOOK_URL}/webhook/***`);
+    if (WEBHOOK_URL) {
+      const webhookUrl = `${WEBHOOK_URL}/webhook/${BOT_TOKEN}`;
+      await bot.setWebHook(webhookUrl);
+      console.log(`🚀 BillNot started in WEBHOOK mode`);
+      console.log(`🔗 Webhook registered: ${WEBHOOK_URL}/webhook/***`);
+    } else {
+      console.warn('⚠️ WEBHOOK_URL not set — server running but webhook not registered');
+      console.warn('Set WEBHOOK_URL env var to enable Telegram webhook');
+    }
   }
 }
 
