@@ -18,6 +18,7 @@ Auto-deploys on every push to `main` branch.
      run.googleapis.com \
      artifactregistry.googleapis.com \
      cloudscheduler.googleapis.com \
+     vision.googleapis.com \
      iam.googleapis.com
    ```
 4. GitHub repository with the code pushed
@@ -67,7 +68,10 @@ In your GitHub repo, go to **Settings → Secrets and variables → Actions** an
 | `TELEGRAM_BOT_TOKEN` | Your bot token |
 | `GEMINI_API_KEY` | Your Gemini API key |
 | `SUPABASE_URL` | Your Supabase URL |
+| `SUPABASE_ANON_KEY` | Your Supabase anon key |
 | `SUPABASE_SERVICE_KEY` | Your Supabase service key |
+| `GCP_CLIENT_EMAIL` | Service account email (for Vision API) |
+| `GCP_PRIVATE_KEY` | Service account private key |
 | `CRON_SECRET` | A random secret string |
 
 After adding secrets, delete the local key file:

@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { google } from 'googleapis';
 
-const CLIENT_EMAIL = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
-const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const CLIENT_EMAIL = process.env.GCP_CLIENT_EMAIL;
+const PRIVATE_KEY = process.env.GCP_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
 // Strong labels — highly specific to receipts/invoices
 const STRONG_RECEIPT_LABELS = [

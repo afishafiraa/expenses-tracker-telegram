@@ -1,15 +1,29 @@
-# BillNot - WhatsApp Bill Tracker
+# BillNot - Telegram Expense Tracker
 
-Track your expenses by chatting with a WhatsApp bot. Send text messages or invoice photos, and the AI automatically logs them to Google Sheets.
+Track your expenses by chatting with a Telegram bot. Send text messages or receipt photos, and Gemini AI automatically extracts and logs them to a database with multi-currency support.
 
 ## Features
 
-- 💬 Chat with WhatsApp bot to record expenses
-- 📸 Send invoice photos (AI reads and extracts data)
-- 📊 Monthly summary with "summary" command
-- 📁 Auto-creates monthly sheet tabs
-- 🤖 Powered by Gemini AI (free tier)
-- 📈 Data stored in Google Sheets
+- Chat naturally to record expenses ("lunch 89 at 7-11")
+- Send receipt/invoice photos (AI reads and extracts data)
+- Multi-currency support (13 Asian/SEA currencies + USD)
+- Automatic exchange rate conversion (updated daily)
+- Monthly spending summary with category breakdown
+- Quarterly Excel export
+- Cloud Vision receipt validation (rejects non-receipt photos)
+- Tax handling (before/after tax calculation)
+
+## Tech Stack
+
+| Component | Tool | Why |
+|---|---|---|
+| Messaging | Telegram Bot API | Free, instant setup, no approval needed |
+| AI Extraction | Gemini 2.5 Flash | Free (1,500 req/day), vision + text |
+| Image Validation | Google Cloud Vision | Receipt detection before Gemini extraction |
+| Database | Supabase (PostgreSQL) | Free (500MB), multi-user, fast queries |
+| Export | exceljs | Quarterly Excel reports |
+| Hosting | Google Cloud Run | Free tier, auto-scales, webhook mode |
+| CI/CD | GitHub Actions | Auto-deploy on push to main |
 
 ## Setup
 
@@ -21,115 +35,77 @@ npm install
 
 ### 2. Configure Environment Variables
 
-Copy `.env.example` to `.env` and fill in your credentials (already done if you followed the guide).
+Copy `.env.example` to `.env` and fill in your credentials.
 
-### 3. Start the Server
+Required:
+- `TELEGRAM_BOT_TOKEN` — from @BotFather on Telegram
+- `GEMINI_API_KEY` — from https://aistudio.google.com/apikey
+- `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` — from Supabase project settings
+
+Optional:
+- `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (for Cloud Vision receipt validation)
+- `WEBHOOK_URL`, `CRON_SECRET` (for Cloud Run production deployment)
+
+### 3. Set Up Database
+
+Run the SQL schema from `docs/DATABASE_SCHEMA.md` in Supabase SQL Editor.
+
+### 4. Start Development
 
 ```bash
 npm run dev
 ```
 
-The webhook server will start on `http://localhost:3000`
+The bot starts in polling mode locally.
 
-### 4. Expose Server with ngrok
+## Commands
 
-Install ngrok:
-```bash
-brew install ngrok
-```
-
-Run ngrok:
-```bash
-ngrok http 3000
-```
-
-Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
-
-### 5. Configure Webhook in Meta Developer Console
-
-1. Go to your WhatsApp app in Meta Developer Console
-2. Navigate to **WhatsApp** → **Configuration**
-3. In **Webhook** section, click **"Edit"**
-4. Paste your ngrok URL + `/webhook` (e.g., `https://abc123.ngrok.io/webhook`)
-5. Enter the **Verify Token**: `billnot_webhook_verify_token_12345` (from .env)
-6. Click **"Verify and Save"**
-7. Subscribe to **messages** field
-
-### 6. Test Your Bot!
-
-1. Send a message to your WhatsApp test number
-2. Try: "grab 185 to office"
-3. Bot should reply with confirmation
-4. Check your Google Sheet!
+| Command | Description |
+|---|---|
+| `/start` | Start bot / onboarding |
+| `/help` | Show available commands |
+| `/profile` | View your profile and stats |
+| `/setcurrency [CODE]` | Change default currency (e.g., `/setcurrency USD`) |
+| `/totalspend` | Monthly spending total and breakdown |
+| `/export` | Generate quarterly Excel report |
+| `/deactivate` | Delete account and all data |
 
 ## Usage Examples
 
-**Track expense:**
+**Text input:**
 ```
 grab 185 to office
 lunch 89 at 7-11
-electric bill 1250
+coffee 250 yen cash
 ```
 
-**Send invoice photo:**
-Just send any receipt/invoice image
+**Photo input:**
+Send a receipt/invoice photo — the bot validates it's a real receipt using Cloud Vision, then extracts expense data with Gemini AI.
 
-**Get summary:**
-```
-summary
-```
+## Scripts
 
-## Tech Stack
+- `npm run dev` — Start dev server with hot reload (polling mode)
+- `npm run build` — Compile TypeScript
+- `npm start` — Run production build (webhook mode)
+- `npm test` — Test Gemini AI extraction
 
-- TypeScript
-- Express (webhook server)
-- Gemini AI (bill extraction)
-- Google Sheets API (data storage)
-- WhatsApp Business API
+## Deployment
+
+Deployed to Google Cloud Run with GitHub Actions CI/CD. Every push to `main` triggers auto-deploy.
+
+See `docs/CLOUD_RUN_DEPLOYMENT.md` for full deployment guide.
+
+## Supported Currencies
+
+THB, JPY, SGD, MYR, IDR, PHP, VND, KRW, CNY, HKD, TWD, INR, USD
 
 ## Cost
 
 - **Gemini API**: Free (1,500 requests/day)
-- **WhatsApp Business API**: Free (1,000 conversations/month)
-- **Google Sheets**: Free
-- **Total**: $0/month 🎉
-
-## Project Structure
-
-```
-src/
-├── index.ts                    # Main webhook server
-├── types.ts                    # TypeScript interfaces
-└── services/
-    ├── gemini.service.ts       # AI extraction
-    ├── sheets.service.ts       # Google Sheets integration
-    └── whatsapp.service.ts     # WhatsApp API
-```
-
-## Scripts
-
-- `npm run dev` - Start development server with hot reload
-- `npm run build` - Compile TypeScript
-- `npm start` - Run production build
-- `npm test` - Test Gemini API
-- `npm run test:sheets` - Test Google Sheets API
-
-## Troubleshooting
-
-**Webhook verification fails:**
-- Check verify token matches in .env
-- Ensure ngrok is running
-- Check server logs
-
-**Messages not received:**
-- Verify webhook is subscribed to "messages" field
-- Check Meta app is not in test mode restrictions
-- Check server logs for errors
-
-**Gemini extraction fails:**
-- Ensure API key is valid
-- Check if you hit rate limit (1,500/day)
-- Try rephrasing the message
+- **Cloud Vision**: Free (1,000 requests/month)
+- **Supabase**: Free (500MB storage)
+- **Cloud Run**: Free tier (2M requests/month)
+- **Total**: $0/month for low-traffic usage
 
 ## License
 

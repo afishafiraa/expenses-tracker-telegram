@@ -13,5 +13,3 @@ exports
 *.log
 *.md
 config/
-check-permissions.js
-test-sheets-auth.js

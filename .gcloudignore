@@ -13,5 +13,3 @@ config/
 *.log
 *.md
 gha-key.json
-check-permissions.js
-test-sheets-auth.js
