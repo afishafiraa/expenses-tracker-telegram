@@ -52,22 +52,24 @@ There is no test framework (jest/vitest) — tests are manual scripts.
 - **Bot framework:** `node-telegram-bot-api` in polling mode
 - **No formal test suite** — only manual test scripts in `src/test-*.ts`
 
-## Deployment (Webhook + Google Cloud Run)
+## Deployment (Webhook + VPS + Cloudflare Tunnel)
 
 The bot supports two modes controlled by `NODE_ENV`:
-- **Development** (`NODE_ENV=development`): Polling mode, same as before. Run with `npm run dev`.
-- **Production** (default): Webhook mode with an HTTP server. Telegram pushes updates to `POST /webhook/<token>`.
+- **Development** (`NODE_ENV=development`): Polling mode. Run with `npm run dev`.
+- **Production** (default): Webhook mode with an HTTP server on port 3333. Telegram pushes updates to `POST /webhook/<token>`.
 
 **HTTP endpoints (production):**
 - `POST /webhook/<BOT_TOKEN>` — receives Telegram updates via `bot.processUpdate()`
 - `GET /health` — health check (returns `{"status":"ok","mode":"webhook"}`)
 - `GET /cron/exchange-rates` — triggers exchange rate update, protected by `x-cron-secret` header
 
-**Startup optimization:** In production, the HTTP server starts immediately. Exchange rate initialization and webhook registration run in background (non-blocking) to minimize cold start time on Cloud Run.
+**Infrastructure:** VPS running Docker Compose with two containers:
+- `bot` — the Node.js app (built from Dockerfile)
+- `tunnel` — Cloudflare Tunnel (`cloudflare/cloudflared`) exposing the bot to `https://billnot.afishafiraa.cloud`
 
-Exchange rate daily updates use Google Cloud Scheduler in production (not `setInterval`).
+Exchange rate daily updates use a VPS cron job calling `/cron/exchange-rates`.
 
-**CI/CD:** GitHub Actions auto-deploys on push to `main`. See `.github/workflows/deploy.yml` and `docs/CLOUD_RUN_DEPLOYMENT.md`.
+**CI/CD:** GitHub Actions auto-deploys on push to `main` via SSH. See `.github/workflows/deploy.yml` and `docs/VPS_DEPLOYMENT.md`.
 
 ## Environment Variables
 

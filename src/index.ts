@@ -10,7 +10,7 @@ import { ExchangeRateService } from './services/exchangeRate.service.js';
 // ========================================
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '3333', 10);
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
 const isDev = process.env.NODE_ENV === 'development';

@@ -1,0 +1,16 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - bot

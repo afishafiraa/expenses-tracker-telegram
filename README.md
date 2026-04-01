@@ -22,8 +22,8 @@ Track your expenses by chatting with a Telegram bot. Send text messages or recei
 | Image Validation | Google Cloud Vision | Receipt detection before Gemini extraction |
 | Database | Supabase (PostgreSQL) | Free (500MB), multi-user, fast queries |
 | Export | exceljs | Quarterly Excel reports |
-| Hosting | Google Cloud Run | Free tier, auto-scales, webhook mode |
-| CI/CD | GitHub Actions | Auto-deploy on push to main |
+| Hosting | VPS + Cloudflare Tunnel | Always-on, no cold starts, free tunnel |
+| CI/CD | GitHub Actions | Auto-deploy on push to main via SSH |
 
 ## Setup
 
@@ -44,7 +44,7 @@ Required:
 
 Optional:
 - `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (for Cloud Vision receipt validation)
-- `WEBHOOK_URL`, `CRON_SECRET` (for Cloud Run production deployment)
+- `WEBHOOK_URL`, `CRON_SECRET` (for production deployment)
 
 ### 3. Set Up Database
 
@@ -91,9 +91,16 @@ Send a receipt/invoice photo — the bot validates it's a real receipt using Clo
 
 ## Deployment
 
-Deployed to Google Cloud Run with GitHub Actions CI/CD. Every push to `main` triggers auto-deploy.
+Deployed to a VPS with Cloudflare Tunnel and Docker Compose. GitHub Actions auto-deploys on push to `main` via SSH.
 
-See `docs/CLOUD_RUN_DEPLOYMENT.md` for full deployment guide.
+```bash
+# On VPS
+git clone <repo> billnot && cd billnot
+cp .env.example .env  # fill in secrets + CLOUDFLARE_TUNNEL_TOKEN
+docker compose up -d --build
+```
+
+See `docs/VPS_DEPLOYMENT.md` for full deployment guide.
 
 ## Supported Currencies
 
@@ -104,8 +111,9 @@ THB, JPY, SGD, MYR, IDR, PHP, VND, KRW, CNY, HKD, TWD, INR, USD
 - **Gemini API**: Free (1,500 requests/day)
 - **Cloud Vision**: Free (1,000 requests/month)
 - **Supabase**: Free (500MB storage)
-- **Cloud Run**: Free tier (2M requests/month)
-- **Total**: $0/month for low-traffic usage
+- **VPS**: ~$4/month (Hostinger/Hetzner)
+- **Cloudflare Tunnel**: Free
+- **Total**: ~$4/month
 
 ## License
 
