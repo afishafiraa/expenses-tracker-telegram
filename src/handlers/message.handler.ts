@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { DatabaseService } from '../services/database.service.js';
 import { GeminiService } from '../services/gemini.service.js';
+import { VisionService } from '../services/vision.service.js';
 import { ConversationService } from '../services/conversation.service.js';
 import type { User, Currency, BillEntry } from '../types.js';
 import { normalizePaymentMethod } from '../utils/payment.js';
@@ -14,6 +15,7 @@ const DEFAULT_CURRENCY: Currency = 'JPY';
  */
 export class MessageHandler {
   private gemini: GeminiService;
+  private vision: VisionService;
   private conversation: ConversationService;
 
   constructor(
@@ -21,6 +23,7 @@ export class MessageHandler {
     private database: DatabaseService
   ) {
     this.gemini = new GeminiService();
+    this.vision = new VisionService();
     this.conversation = new ConversationService();
   }
 
@@ -56,14 +59,30 @@ export class MessageHandler {
     console.log(`\n📸 Received photo from user ${user.telegram_id}`);
 
     try {
-      await this.bot.sendMessage(chatId, '📸 Analyzing receipt...');
+      await this.bot.sendMessage(chatId, '📸 Analyzing image...');
 
+      // Download image once
       const photo = msg.photo![msg.photo!.length - 1];
       const fileLink = await this.bot.getFileLink(photo.file_id);
-
       console.log(`🔗 Photo URL: ${fileLink}`);
 
-      const extractedData = await this.gemini.extractBillFromImage(fileLink);
+      const imageResponse = await fetch(fileLink);
+      if (!imageResponse.ok) {
+        await this.bot.sendMessage(chatId, '❌ Could not download the image. Please try again.');
+        return;
+      }
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      const imageBase64 = imageBuffer.toString('base64');
+
+      // Validate with Cloud Vision: is this a receipt?
+      const isReceipt = await this.vision.isReceipt(imageBase64);
+      if (!isReceipt) {
+        await this.bot.sendMessage(chatId, '🚫 This doesn\'t look like a receipt or invoice. Please send a photo of a bill, receipt, or invoice.');
+        return;
+      }
+
+      // Extract expense data with Gemini
+      const extractedData = await this.gemini.extractBillFromImage(imageBase64);
       console.log('📊 Extracted data:', JSON.stringify(extractedData, null, 2));
 
       if (!extractedData || !extractedData.items || extractedData.items.length === 0) {

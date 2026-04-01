@@ -170,17 +170,8 @@ export class GeminiService {
     }
   }
 
-  async extractBillFromImage(imageUrl: string): Promise<GeminiExtractedData | null> {
+  async extractBillFromImage(imageBase64: string): Promise<GeminiExtractedData | null> {
     try {
-      // Download image and convert to base64
-      const imageResponse = await fetch(imageUrl);
-      if (!imageResponse.ok) {
-        console.error(`❌ Failed to download image: ${imageResponse.status}`);
-        return null;
-      }
-      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-      const imageBase64 = imageBuffer.toString('base64');
-
       const prompt = EXTRACTION_PROMPT;
 
       const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
