@@ -80,6 +80,22 @@ export class DatabaseService {
    */
   async saveExpense(userId: string, bill: BillEntry): Promise<void> {
     try {
+      // Check for duplicate: same user, date, item, amount, vendor
+      const { data: existing } = await this.supabase
+        .from('expenses')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('date', bill.date)
+        .eq('item', bill.item)
+        .eq('amount', bill.amount)
+        .eq('vendor', bill.vendor)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        console.log(`⚠️ Duplicate expense skipped: ${bill.vendor} - ${bill.item} ${bill.amount} ${bill.currency} on ${bill.date}`);
+        return;
+      }
+
       const { error } = await this.supabase.from('expenses').insert({
         user_id: userId,
         date: bill.date,

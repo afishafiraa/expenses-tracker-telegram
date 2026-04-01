@@ -56,10 +56,11 @@ export class ConfirmationHandler {
     const response = normalizeYesNo(input);
 
     if (response === 'yes') {
+      // Clear state first to prevent double-confirm
+      await this.database.clearConversationState(user.id);
       await this.bot.sendMessage(chatId, '💾 Saving...');
       try {
         await this.messageHandler.saveExpenseFromData(user, data);
-        await this.database.clearConversationState(user.id);
         const currency = data.currency || user.default_currency;
         const amount = Math.ceil(data.amount);
         await this.bot.sendMessage(
@@ -90,10 +91,11 @@ export class ConfirmationHandler {
     const response = normalizeYesNo(input);
 
     if (response === 'yes') {
+      // Clear state first to prevent double-confirm
+      await this.database.clearConversationState(user.id);
       await this.bot.sendMessage(chatId, '💾 Saving...');
       try {
         await this.messageHandler.saveImageExpense(user, data);
-        await this.database.clearConversationState(user.id);
 
         const count = data.items.length;
         await this.bot.sendMessage(
