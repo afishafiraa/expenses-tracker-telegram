@@ -26,10 +26,21 @@ const REJECT_LABELS = [
 
 // Keywords that appear on receipts — need multiple matches to confirm
 const RECEIPT_KEYWORDS = [
+  // English
   'total', 'subtotal', 'sub-total', 'tax', 'vat',
   'qty', 'quantity', 'price', 'amount', 'discount',
   'balance', 'net', 'gross', 'item', 'unit',
   'change', 'tendered', 'payment', 'paid',
+  // Japanese
+  '合計', '小計', '税', '消費税', '領収', '領収証', '領収書',
+  '料金', '金額', '支払', 'お釣', '釣銭', '点数', '個',
+  '売上', '取引', '明細', '伝票', '請求',
+  // Thai
+  'รวม', 'ทั้งหมด', 'ภาษี', 'ใบเสร็จ', 'จำนวน', 'ราคา', 'ชำระ',
+  // Korean
+  '합계', '소계', '세금', '영수증', '결제', '금액',
+  // Chinese
+  '总计', '小计', '税额', '收据', '发票', '付款', '金额',
 ];
 
 export class VisionService {
@@ -116,14 +127,22 @@ export class VisionService {
       const textLength = fullText.length;
 
       // Count receipt keyword matches in text
+      // Use simple includes for CJK keywords (word boundaries don't work with CJK)
       const keywordMatches = RECEIPT_KEYWORDS.filter((kw) =>
-        new RegExp(`\\b${kw}\\b`, 'i').test(fullText)
+        /^[a-zA-Z\-]/.test(kw)
+          ? new RegExp(`\\b${kw}\\b`, 'i').test(fullText)
+          : fullText.includes(kw)
       );
 
-      // Count lines that look like "item + price" (e.g., "Coffee    45.00")
+      // Count lines that look like "item + price"
       const lines = fullText.split('\n');
       const priceLineCount = lines.filter((line: string) =>
-        /\d+[.,]\d{2}\b/.test(line) || /[\d,]+\s*(?:[$¥฿₹₩€£₱₫])/.test(line)
+        /\d+[.,]\d{2}\b/.test(line) ||                          // 45.00, 1,500.00
+        /[\d,]+\s*(?:[$¥฿₹₩€£₱₫])/.test(line) ||              // 1,500¥
+        /(?:[$¥฿₹₩€£₱₫])\s*[\d,]+/.test(line) ||              // ¥1,500 or ¥550
+        /[\d,]+\s*円/.test(line) ||                              // 1,500円
+        /[\d,]+\s*(?:บาท|원|元|dong|₫)/.test(line) ||           // Asian currency words
+        /[\d,]+\s*(?:外|込)/.test(line)                          // Japanese tax markers (¥100外)
       ).length;
 
       console.log(`📝 Text length: ${textLength}, Keywords: ${keywordMatches.join(', ') || 'none'}, Price lines: ${priceLineCount}`);
@@ -141,9 +160,9 @@ export class VisionService {
         return true;
       }
 
-      // 3. No label match, but text has many receipt keywords + multiple price lines → accept
-      if (keywordMatches.length >= 3 && priceLineCount >= 3) {
-        console.log('📋 Receipt detected: strong text evidence (keywords + prices)');
+      // 3. No label match, but text has receipt keywords + price lines → accept
+      if (keywordMatches.length >= 2 && priceLineCount >= 2) {
+        console.log('📋 Receipt detected: text evidence (keywords + prices)');
         return true;
       }
 
