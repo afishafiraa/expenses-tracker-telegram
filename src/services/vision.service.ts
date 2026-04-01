@@ -160,9 +160,15 @@ export class VisionService {
         return true;
       }
 
-      // 3. No label match, but text has receipt keywords + price lines → accept
+      // 3. Text has receipt keywords + price lines → accept
       if (keywordMatches.length >= 2 && priceLineCount >= 2) {
         console.log('📋 Receipt detected: text evidence (keywords + prices)');
+        return true;
+      }
+
+      // 4. Many keywords with at least one price → accept (single-item receipts like tolls, parking)
+      if (keywordMatches.length >= 3 && priceLineCount >= 1) {
+        console.log('📋 Receipt detected: many keywords + price line');
         return true;
       }
 
