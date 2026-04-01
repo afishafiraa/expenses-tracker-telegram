@@ -58,7 +58,7 @@ What should I call you? (nickname)`
 I help you track your expenses automatically.
 
 📝 How to use:
-• Text: "lunch 89 at 7-11"
+• Text: "lunch 89 at 7-11", "buy coffee 300 yen with tax"
 • Photo: Send receipt photos
 • AI Chat: Talk naturally, I'll detect expenses
 

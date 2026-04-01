@@ -224,25 +224,12 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
         has_tax: hasTaxMention ? undefined : false,
       };
 
-      // If tax mentioned but no rate, ask for tax details
-      if (hasTaxMention && (!detected.taxRate || detected.taxRate === 0)) {
-        await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', expenseData as any);
-        await this.bot.sendMessage(
-          chatId,
-          `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
-        );
-      } else if (detected.taxRate && detected.taxRate > 0) {
-        // Tax rate provided, ask if before/after
-        await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', expenseData as any);
-        await this.bot.sendMessage(
-          chatId,
-          `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
-        );
-      } else {
-        // No tax, go straight to confirmation
-        await this.database.setConversationState(user.id, 'awaiting_confirmation', expenseData as any);
-        await this.sendExpenseConfirmation(chatId, user, expenseData);
-      }
+      // Always ask about tax
+      await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', expenseData as any);
+      await this.bot.sendMessage(
+        chatId,
+        `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
+      );
     } catch (error) {
       console.error('❌ Error handling expense detection:', error);
       await this.bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
@@ -291,26 +278,4 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
     await this.database.saveExpense(user.id, billEntry);
   }
 
-  /**
-   * Send expense confirmation message
-   */
-  private async sendExpenseConfirmation(chatId: number, user: User, data: any): Promise<void> {
-    const currency = data.currency || user.default_currency || DEFAULT_CURRENCY;
-    const amount = Math.ceil(data.amount);
-    const taxInfo = data.tax_rate && data.tax_rate > 0
-      ? `\nTax: ${(data.tax_rate * 100).toFixed(0)}% (${data.tax_included ? 'included' : 'excluded'})`
-      : '';
-
-    await this.bot.sendMessage(
-      chatId,
-      `📝 Please confirm:
-
-Item: ${data.item}
-Amount: ${amount} ${currency}${taxInfo}
-Vendor: ${data.vendor}
-Payment: ${data.payment_method}
-
-Is this correct?\n\n${getMultiLangMessage('yes_no')}`
-    );
-  }
 }

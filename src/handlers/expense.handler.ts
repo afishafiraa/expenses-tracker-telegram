@@ -60,8 +60,9 @@ export class ExpenseHandler {
     } else if (!data.payment_method) {
       await this.database.setConversationState(user.id, 'awaiting_payment', data);
       await this.bot.sendMessage(chatId, 'How did you pay?');
-    } else if (data.has_tax === undefined) {
-      // Tax mentioned, ask about it
+    } else if (data.has_tax === undefined || data.has_tax === false) {
+      // Always ask about tax if not yet answered
+      data.has_tax = undefined;
       await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', data);
       await this.bot.sendMessage(
         chatId,

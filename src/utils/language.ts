@@ -148,10 +148,7 @@ export function getMultiLangMessage(type: 'yes_no' | 'tax_timing' | 'invalid'): 
   switch (type) {
     case 'yes_no':
       return `Please answer:
-• Yes / No
-• はい / いいえ (Japanese)
-• Ya / Tidak (Indonesian)
-• Có / Không (Vietnamese)`;
+• Yes / No`;
 
     case 'tax_timing':
       return `Is the price:
