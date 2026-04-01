@@ -130,24 +130,32 @@ function createHttpServer(): http.Server {
 // ========================================
 
 async function startup() {
-  await exchangeRateService.initialize();
-
   if (isDev) {
+    await exchangeRateService.initialize();
     console.log('🚀 BillNot started in POLLING mode (development)');
     console.log('💬 Bot is polling for messages...\n');
     exchangeRateInterval = exchangeRateService.scheduleDailyUpdates();
   } else {
-    // Start HTTP server first (Cloud Run needs a listening port)
+    // Start HTTP server FIRST — Cloud Run needs a listening port ASAP
     server = createHttpServer();
 
+    // Initialize exchange rates in background (don't block startup)
+    exchangeRateService.initialize().catch((err) => {
+      console.error('❌ Exchange rate init failed:', err);
+    });
+
+    // Register webhook in background — Telegram remembers it,
+    // so even if this is slow, incoming requests still work
     if (WEBHOOK_URL) {
       const webhookUrl = `${WEBHOOK_URL}/webhook/${BOT_TOKEN}`;
-      await bot.setWebHook(webhookUrl);
-      console.log(`🚀 BillNot started in WEBHOOK mode`);
-      console.log(`🔗 Webhook registered: ${WEBHOOK_URL}/webhook/***`);
+      bot.setWebHook(webhookUrl).then(() => {
+        console.log(`🔗 Webhook registered: ${WEBHOOK_URL}/webhook/***`);
+      }).catch((err) => {
+        console.error('❌ Failed to register webhook:', err);
+      });
+      console.log('🚀 BillNot started in WEBHOOK mode');
     } else {
       console.warn('⚠️ WEBHOOK_URL not set — server running but webhook not registered');
-      console.warn('Set WEBHOOK_URL env var to enable Telegram webhook');
     }
   }
 }
