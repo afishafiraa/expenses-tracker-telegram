@@ -91,8 +91,9 @@ export class ExpenseHandler {
     if (!data.payment_method) {
       await this.database.setConversationState(user.id, 'awaiting_payment', data);
       await this.bot.sendMessage(chatId, 'How did you pay?');
-    } else if (data.has_tax === undefined) {
-      // Tax mentioned, ask about it
+    } else if (data.has_tax === undefined || data.has_tax === false) {
+      // Always ask about tax if not yet answered
+      data.has_tax = undefined;
       await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', data);
       await this.bot.sendMessage(
         chatId,
@@ -117,9 +118,9 @@ export class ExpenseHandler {
     data.payment_method = normalizePaymentMethod(input);
     data.missing = (data.missing || []).filter((m: string) => m !== 'payment method');
 
-    // Check if we need to ask about tax
-    // If has_tax is undefined, it means user mentioned tax
-    if (data.has_tax === undefined) {
+    // Always ask about tax if not yet answered
+    if (data.has_tax === undefined || data.has_tax === false) {
+      data.has_tax = undefined;
       await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', data);
       await this.bot.sendMessage(
         chatId,
