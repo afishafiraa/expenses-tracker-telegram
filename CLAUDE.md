@@ -37,6 +37,8 @@ There is no test framework (jest/vitest) — tests are manual scripts.
 - `conversation.service.ts` — Gemini-powered conversational AI that detects expenses from natural chat
 - `exchangeRate.service.ts` — Fetches and caches exchange rates daily via Frankfurter API
 - `export.service.ts` — Excel export via exceljs
+- `notification.service.ts` — Sends critical error notifications to a Telegram chat via the dev bot. Singleton `notifier` export. Rate-limited (1 msg/5s). Used alongside `console.error()` in all handlers/services.
+
 **Image processing flow:** Photo → download once → compress with sharp (1536x2048, JPEG 85%) → Cloud Vision validation (is receipt?) → if yes, Gemini extraction → user confirmation (yes/no → edit or cancel) → save. Non-receipt images are rejected without calling Gemini.
 
 **Conversation state machine:** Multi-step flows (onboarding, expense collection, tax questions) are tracked in the `conversation_states` Supabase table. Each user has at most one active state. States are defined in `src/types.ts` as `ConversationStateType`.
@@ -56,8 +58,8 @@ There is no test framework (jest/vitest) — tests are manual scripts.
 ## Deployment (Webhook + VPS + Cloudflare Tunnel)
 
 The bot supports two modes controlled by `NODE_ENV`:
-- **Development** (`NODE_ENV=development`): Polling mode. Run with `npm run dev`.
-- **Production** (default): Webhook mode with an HTTP server on port 3333. Telegram pushes updates to `POST /webhook/<token>`.
+- **Development** (`NODE_ENV=development`): Polling mode using `TELEGRAM_DEV_BOT_TOKEN` (falls back to `TELEGRAM_BOT_TOKEN`). Run with `npm run dev`.
+- **Production** (default): Webhook mode with `TELEGRAM_BOT_TOKEN` on port 3333. Telegram pushes updates to `POST /webhook/<token>`.
 
 **HTTP endpoints (production):**
 - `POST /webhook/<BOT_TOKEN>` — receives Telegram updates via `bot.processUpdate()`
@@ -74,4 +76,4 @@ Exchange rate daily updates use a VPS cron job calling `/cron/exchange-rates`.
 
 ## Environment Variables
 
-See `.env.example`. Required: `TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`. Production also requires: `WEBHOOK_URL`, `CRON_SECRET`. Optional: `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (for Vision API receipt validation).
+See `.env.example`. Required: `TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`. Production also requires: `WEBHOOK_URL`, `CRON_SECRET`. Optional: `GCP_CLIENT_EMAIL`, `GCP_PRIVATE_KEY` (for Vision API receipt validation), `TELEGRAM_DEV_BOT_TOKEN`, `ERROR_NOTIFY_CHAT_ID` (for error notifications via dev bot).

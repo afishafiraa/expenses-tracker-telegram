@@ -4,19 +4,25 @@ import TelegramBot from 'node-telegram-bot-api';
 import { BotController } from './controllers/bot.controller.js';
 import { DatabaseService } from './services/database.service.js';
 import { ExchangeRateService } from './services/exchangeRate.service.js';
+import { notifier } from './services/notification.service.js';
 
 // ========================================
 // Config
 // ========================================
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
+const isDev = process.env.NODE_ENV === 'development';
+
+// Dev mode uses DEV_BOT_TOKEN if available, falls back to BOT_TOKEN
+const BOT_TOKEN = isDev
+  ? (process.env.TELEGRAM_DEV_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN!)
+  : process.env.TELEGRAM_BOT_TOKEN!;
+
 const PORT = parseInt(process.env.PORT || '3333', 10);
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 const CRON_SECRET = process.env.CRON_SECRET;
-const isDev = process.env.NODE_ENV === 'development';
 
 if (!BOT_TOKEN) {
-  console.error('❌ TELEGRAM_BOT_TOKEN is not set in .env file');
+  console.error('❌ Bot token is not set. Set TELEGRAM_BOT_TOKEN (or TELEGRAM_DEV_BOT_TOKEN for dev)');
   process.exit(1);
 }
 
@@ -56,6 +62,7 @@ bot.on('message', (msg) => controller.handleMessage(msg));
 if (isDev) {
   bot.on('polling_error', (error) => {
     console.error('❌ Polling error:', error);
+    notifier.notify('Polling', (error as Error).message, { stack: (error as Error).stack });
   });
 }
 
@@ -79,6 +86,7 @@ function createHttpServer(): http.Server {
           res.end('ok');
         } catch (e) {
           console.error('❌ Failed to process update:', e);
+          notifier.notify('Webhook', (e as Error).message, { stack: (e as Error).stack });
           res.writeHead(400);
           res.end('bad request');
         }
@@ -107,6 +115,7 @@ function createHttpServer(): http.Server {
         res.end('ok');
       } catch (e) {
         console.error('❌ Cron exchange rate update failed:', e);
+        notifier.notify('Exchange Rate Cron', (e as Error).message, { stack: (e as Error).stack });
         res.writeHead(500);
         res.end('error');
       }
@@ -142,6 +151,7 @@ async function startup() {
     // Initialize exchange rates in background (don't block startup)
     exchangeRateService.initialize().catch((err) => {
       console.error('❌ Exchange rate init failed:', err);
+      notifier.notify('Startup', 'Exchange rate init failed: ' + (err as Error).message);
     });
 
     // Register webhook in background — Telegram remembers it,
@@ -160,8 +170,9 @@ async function startup() {
   }
 }
 
-startup().catch((error) => {
+startup().catch(async (error) => {
   console.error('❌ Startup failed:', error);
+  await notifier.notify('Startup', 'Bot startup failed: ' + (error as Error).message, { stack: (error as Error).stack });
   process.exit(1);
 });
 

@@ -7,6 +7,7 @@ import { ConversationService } from '../services/conversation.service.js';
 import type { User, Currency, BillEntry } from '../types.js';
 import { normalizePaymentMethod } from '../utils/payment.js';
 import { getMultiLangMessage } from '../utils/language.js';
+import { notifier } from '../services/notification.service.js';
 
 const DEFAULT_CURRENCY: Currency = 'JPY';
 
@@ -48,6 +49,7 @@ export class MessageHandler {
       return null;
     } catch (error) {
       console.error('❌ Error processing text message:', error);
+      notifier.notify('Text Processing', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
       await this.bot.sendMessage(chatId, "Sorry, I'm having trouble understanding. Please try again.");
       return null;
     }
@@ -139,6 +141,7 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
       );
     } catch (error) {
       console.error('❌ Error processing photo:', error);
+      notifier.notify('Photo Processing', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
       await this.bot.sendMessage(chatId, 'Sorry, I encountered an error processing the photo. Please try again.');
     }
   }
@@ -248,6 +251,7 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
       );
     } catch (error) {
       console.error('❌ Error handling expense detection:', error);
+      notifier.notify('Expense Detection', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
       await this.bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
     }
   }
