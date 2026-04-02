@@ -1,4 +1,5 @@
 import TelegramBot from 'node-telegram-bot-api';
+import sharp from 'sharp';
 import { DatabaseService } from '../services/database.service.js';
 import { GeminiService } from '../services/gemini.service.js';
 import { VisionService } from '../services/vision.service.js';
@@ -71,8 +72,19 @@ export class MessageHandler {
         await this.bot.sendMessage(chatId, '❌ Could not download the image. Please try again.');
         return;
       }
-      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-      const imageBase64 = imageBuffer.toString('base64');
+      const rawBuffer = Buffer.from(await imageResponse.arrayBuffer());
+
+      // Compress image to reduce Gemini input tokens
+      const compressedBuffer = await sharp(rawBuffer)
+        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+
+      const originalKB = Math.round(rawBuffer.length / 1024);
+      const compressedKB = Math.round(compressedBuffer.length / 1024);
+      console.log(`📦 Image compressed: ${originalKB}KB → ${compressedKB}KB`);
+
+      const imageBase64 = compressedBuffer.toString('base64');
 
       // Validate with Cloud Vision: is this a receipt?
       const isReceipt = await this.vision.isReceipt(imageBase64);

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import type { Currency } from '../types.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-2.5-flash-lite';
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 interface GeminiResponse {
@@ -170,108 +170,14 @@ Return JSON format:
 
 Examples:
 
+User: "taiyaki 110 yen"
+Response: {"reply":"Taiyaki! 🍡 Let me track that.","expenseDetected":{"isExpense":true,"item":"taiyaki","amount":110,"currency":"JPY","category":"Food","confidence":"high"}}
+
+User: "bought bread with tax 8%"
+Response: {"reply":"Got it! How much was the bread?","expenseDetected":{"isExpense":true,"item":"bread","category":"Food","hasTaxMention":true,"taxRate":0.08,"confidence":"high"}}
+
 User: "hi!"
-Response:
-{
-  "reply": "Hey ${context.userName}! 👋 How's it going?",
-  "expenseDetected": {
-    "isExpense": false,
-    "confidence": "high"
-  }
-}
-
-User: "i just bought taiyaki 110 yen"
-Response:
-{
-  "reply": "Ooh, taiyaki! 🍡 Sounds delicious! Let me help you track that expense.",
-  "expenseDetected": {
-    "isExpense": true,
-    "item": "taiyaki",
-    "amount": 110,
-    "currency": "JPY",
-    "category": "Food",
-    "confidence": "high"
-  }
-}
-
-User: "grabbed a coffee this morning"
-Response:
-{
-  "reply": "Nice! ☕ How much was the coffee?",
-  "expenseDetected": {
-    "isExpense": true,
-    "item": "coffee",
-    "category": "Food",
-    "confidence": "medium"
-  }
-}
-
-User: "lunch 50000 rupiah"
-Response:
-{
-  "reply": "Got it! I'll record your lunch for 50,000 rupiah.",
-  "expenseDetected": {
-    "isExpense": true,
-    "item": "lunch",
-    "amount": 50000,
-    "currency": "IDR",
-    "category": "Food",
-    "confidence": "high"
-  }
-}
-
-User: "taxi 25000 rp"
-Response:
-{
-  "reply": "Recorded! Your taxi ride for 25,000 rp.",
-  "expenseDetected": {
-    "isExpense": true,
-    "item": "taxi",
-    "amount": 25000,
-    "currency": "IDR",
-    "category": "Transport",
-    "confidence": "high"
-  }
-}
-
-User: "bought bread x8 with tax"
-Response:
-{
-  "reply": "Got it! Bread x8 with tax. How much did that cost?",
-  "expenseDetected": {
-    "isExpense": true,
-    "item": "bread x8",
-    "category": "Food",
-    "hasTaxMention": true,
-    "confidence": "high"
-  }
-}
-
-User: "pencil 300 yen with tax 8%"
-Response:
-{
-  "reply": "Alright! Pencil for 300 yen with 8% tax. Where did you buy it?",
-  "expenseDetected": {
-    "isExpense": true,
-    "item": "pencil",
-    "amount": 300,
-    "currency": "JPY",
-    "category": "Shopping",
-    "taxRate": 0.08,
-    "hasTaxMention": true,
-    "confidence": "high"
-  }
-}
-
-User: "what's the weather like?"
-Response:
-{
-  "reply": "I'm an expense tracking bot, so I don't have weather info! 😅 But I can help you track your spending. Bought anything today?",
-  "expenseDetected": {
-    "isExpense": false,
-    "confidence": "high"
-  }
-}
+Response: {"reply":"Hey ${context.userName}! 👋 What can I help you track?","expenseDetected":{"isExpense":false,"confidence":"high"}}
 
 IMPORTANT:
 - Be friendly and conversational

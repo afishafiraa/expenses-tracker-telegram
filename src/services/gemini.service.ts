@@ -2,7 +2,7 @@ import 'dotenv/config';
 import type { GeminiExtractedData } from '../types.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-2.5-flash-lite';
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 
 interface GeminiResponse {
@@ -43,7 +43,7 @@ For each item, extract:
 - Payment method (cash/credit card/QR/transfer/other - if not mentioned, use "Unknown")
 - Brief description
 
-IMPORTANT: Return ONLY the JSON object, no markdown formatting, no explanations.
+IMPORTANT: Return ONLY the JSON object, no markdown formatting, no explanations. Keep descriptions short (under 20 chars). Do not include any thinking or reasoning text before the JSON.
 
 JSON format:
 {
@@ -193,7 +193,7 @@ export class GeminiService {
           ],
           generationConfig: {
             temperature: 0.1,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
           }
         })
       });
@@ -211,22 +211,13 @@ export class GeminiService {
       }
 
       const resultText = data.candidates[0].content.parts[0].text.trim();
+      const finishReason = data.candidates[0].finishReason;
       console.log('📝 Gemini raw response:', resultText.substring(0, 500));
-
-      // Remove markdown code blocks if present
-      let jsonText = resultText
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-
-      // Sometimes Gemini adds trailing text after JSON, extract only the JSON object
-      const jsonStart = jsonText.indexOf('{');
-      const jsonEnd = jsonText.lastIndexOf('}');
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
+      if (finishReason && finishReason !== 'STOP') {
+        console.warn(`⚠️ Gemini finish reason: ${finishReason}`);
       }
 
-      const extracted = JSON.parse(jsonText) as GeminiExtractedData;
+      const extracted = parseGeminiJson(resultText) as GeminiExtractedData;
 
       // Validate required fields
       if (!extracted.vendor || !extracted.items || extracted.items.length === 0) {
