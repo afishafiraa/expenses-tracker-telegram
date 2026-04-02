@@ -2,7 +2,7 @@
 
 ## Overview
 
-Using **Supabase (PostgreSQL)** with Telegram Bot integration, multi-currency support, and Google Sheets export functionality.
+Using **Supabase (PostgreSQL)** with Telegram Bot integration and multi-currency support.
 
 **Version:** 2.0.0
 **Last Updated:** 2026-03-26
@@ -191,7 +191,12 @@ CREATE INDEX idx_conversation_states_user ON conversation_states(user_id);
 - `awaiting_amount` - Collecting expense amount
 - `awaiting_vendor` - Collecting vendor name
 - `awaiting_payment` - Collecting payment method
+- `awaiting_tax_inclusion` - Asking if purchase includes tax
+- `awaiting_tax_rate` - Collecting tax rate
+- `awaiting_tax_timing` - Asking when tax was applied
 - `awaiting_confirmation` - Waiting for expense confirmation
+- `awaiting_rejection_choice` - User said no, choosing edit or cancel
+- `awaiting_edit` - User is editing extracted data
 
 **Example data:**
 ```json
@@ -546,7 +551,6 @@ const countryCurrencyMap = {
 
 - **Indexes:** Created on frequently queried columns (user_id, date, category, currency)
 - **Caching:** Exchange rates cached in database (update daily)
-- **Caching:** Sheet exports table caches Google Sheet URLs
 - **Cascading:** DELETE on user cascades to expenses and conversation_states
 - **JSON data:** conversation_states uses JSONB for flexible state storage
 
@@ -559,21 +563,9 @@ const countryCurrencyMap = {
 - Point-in-time recovery available on paid tiers
 
 **Additional backup:**
-- Monthly export to Google Sheets via `/export` command
-- Store in Google Drive
+- Quarterly export to Excel via `/export` command
 
 ---
 
-## Next Steps
-
-1. ✅ Run SQL schema in Supabase SQL Editor
-2. ⏳ Update TypeScript types to match new schema
-3. ⏳ Update DatabaseService with new methods
-4. ⏳ Implement onboarding flow (/start)
-5. ⏳ Implement currency conversion service
-6. ⏳ Implement conversational AI flow
-
----
-
-*Version: 2.0.0*
-*Last Updated: 2026-03-26*
+*Version: 2.1.0*
+*Last Updated: 2026-04-02*

@@ -74,10 +74,10 @@ export class MessageHandler {
       }
       const rawBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-      // Compress image to reduce Gemini input tokens
+      // Compress image — keep enough resolution for text readability on receipts
       const compressedBuffer = await sharp(rawBuffer)
-        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 80 })
+        .resize(1536, 2048, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
         .toBuffer();
 
       const originalKB = Math.round(rawBuffer.length / 1024);
@@ -121,6 +121,10 @@ export class MessageHandler {
         })
         .join('\n');
 
+      const truncatedWarning = (extractedData as any)._truncated
+        ? '\n\n⚠️ Note: The receipt was too long — some items may be missing.'
+        : '';
+
       await this.bot.sendMessage(
         chatId,
         `📋 I found these expenses:
@@ -129,7 +133,7 @@ export class MessageHandler {
 🏪 Vendor: ${extractedData.vendor}
 💳 Payment: ${extractedData.paymentMethod}
 
-${itemsList}
+${itemsList}${truncatedWarning}
 
 Is this correct?\n\n${getMultiLangMessage('yes_no')}`
       );

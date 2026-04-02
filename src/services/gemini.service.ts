@@ -19,57 +19,53 @@ interface GeminiResponse {
   };
 }
 
-const EXTRACTION_PROMPT = `You are analyzing an expense message. Extract the following data and return ONLY valid JSON.
+// Prompt for text messages (chat-based expense detection)
+const TEXT_EXTRACTION_PROMPT = `Extract expense data from this message. Return ONLY valid JSON, no markdown.
 
-For each item, extract:
-- Date (format: YYYY-MM-DD, or use today's date if not specified)
-- Vendor name
-- Item name
-- Category (Food/Transport/Utilities/Rent/Subscription/Shopping/Entertainment/Healthcare/Other)
-- Amount (before tax, number only)
-- Currency (THB/JPY/USD/SGD/VND/IDR/MYR/PHP/KRW/CNY/HKD/TWD/INR - detect from keywords:
-  • "yen" or "¥" = JPY
-  • "baht" or "฿" = THB
-  • "rupiah" or "rp" or "idr" = IDR
-  • "dong" or "vnd" = VND
-  • "ringgit" or "myr" = MYR
-  • "peso" or "php" = PHP
-  • "won" or "krw" = KRW
-  • "yuan" or "cny" = CNY
-  • "dollar" or "usd" or "$" = USD
-  • "sgd" or "singapore dollar" = SGD
-  If not mentioned, use JPY as default)
-- Tax rate (0, 0.07, 0.08, 0.10, etc. - if not mentioned, use 0)
-- Payment method (cash/credit card/QR/transfer/other - if not mentioned, use "Unknown")
-- Brief description
+Detect currency: ¥/円/"yen"=JPY, ฿/บาท/"baht"=THB, Rp/"rupiah"=IDR, ₫/"dong"=VND, RM/"ringgit"=MYR, ₱/"peso"=PHP, ₩/원/"won"=KRW, 元/"yuan"=CNY, $/"dollar"=USD, S$/"sgd"=SGD. Default: JPY.
+Categories: Food/Transport/Utilities/Rent/Subscription/Shopping/Entertainment/Healthcare/Other.
 
-IMPORTANT: Return ONLY the JSON object, no markdown formatting, no explanations. Keep descriptions short (under 20 chars). Do not include any thinking or reasoning text before the JSON.
+{"date":"YYYY-MM-DD","vendor":"Name","detectedCurrency":"JPY","items":[{"item":"name","category":"Cat","amount":100,"currency":"JPY","taxRate":0,"description":"short"}],"paymentMethod":"Unknown"}
 
-JSON format:
-{
-  "date": "YYYY-MM-DD",
-  "vendor": "Vendor Name",
-  "detectedCurrency": "JPY",
-  "items": [
-    {
-      "item": "Item name",
-      "category": "Category",
-      "amount": 100,
-      "currency": "JPY",
-      "taxRate": 0,
-      "description": "Brief description"
-    }
-  ],
-  "paymentMethod": "Unknown"
-}
+Message:`;
 
-Message to parse:`;
+// Prompt for receipt images (OCR-focused, precise extraction)
+const IMAGE_EXTRACTION_PROMPT = `You are reading a receipt/invoice photo. Extract ALL items precisely.
+
+CRITICAL RULES:
+1. Read each line carefully. Match each item name to its price on the SAME line.
+2. Do NOT mix up item names with prices from different lines.
+3. The amount for each item is the number right before the currency symbol (¥, 円, 外, 込) on that line.
+4. Look for the subtotal (小計) and total (合計). Include "receiptTotal" in your response.
+5. Tax detection (by country):
+   - Japan: "消費税10%", "10%税額", "税率10%"→0.10, "8%"→0.08. "外"=tax-excluded, "込"=tax-included
+   - Thailand: "VAT 7%", "ภาษีมูลค่าเพิ่ม 7%"→0.07
+   - Indonesia: "PPN 11%", "PPN 12%", "pajak"→0.11 or 0.12
+   - Singapore: "GST 9%"→0.09
+   - Philippines: "VAT 12%"→0.12
+   - Vietnam: "VAT 10%", "thuế GTGT"→0.10
+   - Malaysia: "SST 6%", "SST 8%"→0.06 or 0.08
+   - Korea: "부가세 10%", "VAT 10%"→0.10
+   - China: "增值税", tax rates vary (13%, 9%, 6%)
+   - General: "Tax X%", "VAT X%" → use that rate. No tax info → taxRate: 0
+6. Payment detection (multi-language):
+   - Credit card: "クレジット","VISA","Mastercard","カード","ビザ","บัตรเครดิต","kartu kredit","credit card","信用卡","신용카드"
+   - Cash: "現金","เงินสด","tunai","cash","现金","현금"
+   - QR/e-wallet: "PayPay","QR","PromptPay","GoPay","OVO","DANA","GrabPay","ShopeePay","GCash","Touch 'n Go","支付宝","微信支付"
+   - Transfer: "transfer","โอน","转账"
+   - If not found → "Unknown"
+7. Keep descriptions under 20 chars.
+8. Currency: ¥/円=JPY, ฿/บาท=THB, $=USD, ₩/원=KRW, RM/ringgit=MYR, Rp/rupiah=IDR, S$/SGD=SGD, ₫/dong/VND=VND, ₱/peso=PHP, ¥/元/yuan=CNY. Default: JPY.
+9. Categories: Food/Transport/Utilities/Rent/Subscription/Shopping/Entertainment/Healthcare/Other.
+
+Return ONLY this JSON (no markdown, no explanation):
+{"date":"YYYY-MM-DD","vendor":"Name","detectedCurrency":"JPY","receiptTotal":0,"items":[{"item":"name","category":"Cat","amount":100,"currency":"JPY","taxRate":0,"description":"short"}],"paymentMethod":"Unknown"}`;
 
 /**
  * Try to parse potentially truncated JSON from Gemini.
  * If JSON is cut off, attempt to repair by closing brackets.
  */
-function parseGeminiJson(raw: string): any {
+function parseGeminiJson(raw: string): { data: any; wasTruncated: boolean } {
   // Clean markdown
   let text = raw
     .replace(/```json\n?/g, '')
@@ -83,7 +79,7 @@ function parseGeminiJson(raw: string): any {
 
   // Try parsing as-is first
   try {
-    return JSON.parse(text);
+    return { data: JSON.parse(text), wasTruncated: false };
   } catch {
     // JSON is likely truncated, try to repair
     console.warn('⚠️ JSON truncated, attempting repair...');
@@ -115,13 +111,13 @@ function parseGeminiJson(raw: string): any {
   while (brackets > 0) { text += ']'; brackets--; }
   while (braces > 0) { text += '}'; braces--; }
 
-  return JSON.parse(text);
+  return { data: JSON.parse(text), wasTruncated: true };
 }
 
 export class GeminiService {
   async extractBillData(message: string): Promise<GeminiExtractedData | null> {
     try {
-      const prompt = `${EXTRACTION_PROMPT}\n\n"${message}"`;
+      const prompt = `${TEXT_EXTRACTION_PROMPT}\n\n"${message}"`;
 
       const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
         method: 'POST',
@@ -154,7 +150,7 @@ export class GeminiService {
       const resultText = data.candidates[0].content.parts[0].text.trim();
       console.log('📝 Gemini raw response:', resultText.substring(0, 500));
 
-      const extracted = parseGeminiJson(resultText) as GeminiExtractedData;
+      const { data: extracted } = parseGeminiJson(resultText);
 
       // Validate required fields
       if (!extracted.vendor || !extracted.items || extracted.items.length === 0) {
@@ -162,7 +158,7 @@ export class GeminiService {
         return null;
       }
 
-      return extracted;
+      return extracted as GeminiExtractedData;
 
     } catch (error) {
       console.error('❌ Failed to extract bill data:', (error as Error).message);
@@ -172,7 +168,7 @@ export class GeminiService {
 
   async extractBillFromImage(imageBase64: string): Promise<GeminiExtractedData | null> {
     try {
-      const prompt = EXTRACTION_PROMPT;
+      const prompt = IMAGE_EXTRACTION_PROMPT;
 
       const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
         method: 'POST',
@@ -217,7 +213,11 @@ export class GeminiService {
         console.warn(`⚠️ Gemini finish reason: ${finishReason}`);
       }
 
-      const extracted = parseGeminiJson(resultText) as GeminiExtractedData;
+      const { data: extracted, wasTruncated } = parseGeminiJson(resultText);
+
+      if (wasTruncated) {
+        console.warn('⚠️ Response was truncated — some items may be missing');
+      }
 
       // Validate required fields
       if (!extracted.vendor || !extracted.items || extracted.items.length === 0) {
@@ -225,7 +225,31 @@ export class GeminiService {
         return null;
       }
 
-      return extracted;
+      // Validate items total vs receipt total
+      if (extracted.receiptTotal && extracted.receiptTotal > 0) {
+        const itemsSum = extracted.items.reduce((sum: number, item: any) => {
+          const tax = item.taxRate || 0;
+          return sum + Math.round(item.amount * (1 + tax));
+        }, 0);
+        const diff = Math.abs(itemsSum - extracted.receiptTotal);
+        const tolerance = extracted.receiptTotal * 0.05; // 5% tolerance for rounding
+        if (diff > tolerance) {
+          console.warn(`⚠️ Total mismatch: items sum=${itemsSum}, receipt total=${extracted.receiptTotal}, diff=${diff}`);
+        } else {
+          console.log(`✅ Total validated: items sum=${itemsSum} ≈ receipt total=${extracted.receiptTotal}`);
+        }
+      }
+
+      // Mark if truncated so the handler can warn the user
+      const result = extracted as GeminiExtractedData;
+      if (wasTruncated) {
+        (result as any)._truncated = true;
+      }
+
+      // Clean up
+      delete (extracted as any).receiptTotal;
+
+      return result;
 
     } catch (error) {
       console.error('❌ Failed to extract bill from image:', (error as Error).message);

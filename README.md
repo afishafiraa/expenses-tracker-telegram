@@ -11,14 +11,16 @@ Track your expenses by chatting with a Telegram bot. Send text messages or recei
 - Monthly spending summary with category breakdown
 - Quarterly Excel export
 - Cloud Vision receipt validation (rejects non-receipt photos)
-- Tax handling (before/after tax calculation)
+- Tax handling (before/after tax calculation, multi-country support)
+- Edit extracted data before saving (correct wrong items/amounts)
+- Image compression for faster processing
 
 ## Tech Stack
 
 | Component | Tool | Why |
 |---|---|---|
 | Messaging | Telegram Bot API | Free, instant setup, no approval needed |
-| AI Extraction | Gemini 2.5 Flash | Free (1,500 req/day), vision + text |
+| AI Extraction | Gemini 2.5 Flash Lite | Free, low token usage, vision + text |
 | Image Validation | Google Cloud Vision | Receipt detection before Gemini extraction |
 | Database | Supabase (PostgreSQL) | Free (500MB), multi-user, fast queries |
 | Export | exceljs | Quarterly Excel reports |
@@ -80,7 +82,7 @@ coffee 250 yen cash
 ```
 
 **Photo input:**
-Send a receipt/invoice photo — the bot validates it's a real receipt using Cloud Vision, then extracts expense data with Gemini AI.
+Send a receipt/invoice photo — the bot validates it's a real receipt using Cloud Vision, then extracts expense data with Gemini AI. You can edit any wrong items before confirming.
 
 ## Scripts
 

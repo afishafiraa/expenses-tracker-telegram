@@ -165,6 +165,14 @@ export class BotController {
         await this.confirmationHandler.handleConfirmation(chatId, user, state, input);
         break;
 
+      case 'awaiting_rejection_choice':
+        await this.confirmationHandler.handleRejectionChoice(chatId, user, state, input);
+        break;
+
+      case 'awaiting_edit':
+        await this.confirmationHandler.handleEdit(chatId, user, state, input);
+        break;
+
       default:
         await this.database.clearConversationState(user.id);
         await this.bot.sendMessage(chatId, 'Something went wrong. Please send /start to begin again.');

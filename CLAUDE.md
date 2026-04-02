@@ -27,17 +27,17 @@ There is no test framework (jest/vitest) — tests are manual scripts.
   - `command.handler.ts` — Slash commands (/start, /help, /profile, /setcurrency, /totalspend, /export, /deactivate)
   - `message.handler.ts` — Text and photo message processing, AI expense detection, saving expenses
   - `expense.handler.ts` — Multi-step expense collection (amount, vendor, payment, tax flow). Tax is always asked after amount input.
-  - `confirmation.handler.ts` — Yes/no confirmation handling (clears state before saving to prevent double-confirm)
+  - `confirmation.handler.ts` — Yes/no confirmation handling (clears state before saving to prevent double-confirm). On rejection, offers edit or cancel options.
   - `onboarding.handler.ts` — New user setup (nickname, country)
 
 **Services:**
 - `database.service.ts` — Supabase client, all DB operations. Includes duplicate expense prevention (checks user+date+item+amount+vendor before insert).
-- `gemini.service.ts` — Gemini 2.5 Flash API for bill extraction from text/images (direct REST calls, no SDK). Accepts base64 image data.
+- `gemini.service.ts` — Gemini 2.5 Flash Lite API for bill extraction from text/images (direct REST calls, no SDK). Separate prompts for text vs image extraction. Includes JSON truncation repair and receipt total validation.
 - `vision.service.ts` — Google Cloud Vision API for receipt validation. Checks labels and text patterns to reject non-receipt images before Gemini is called.
 - `conversation.service.ts` — Gemini-powered conversational AI that detects expenses from natural chat
 - `exchangeRate.service.ts` — Fetches and caches exchange rates daily via Frankfurter API
 - `export.service.ts` — Excel export via exceljs
-**Image processing flow:** Photo → download once → Cloud Vision validation (is receipt?) → if yes, Gemini extraction → user confirmation → save. Non-receipt images are rejected without calling Gemini.
+**Image processing flow:** Photo → download once → compress with sharp (1536x2048, JPEG 85%) → Cloud Vision validation (is receipt?) → if yes, Gemini extraction → user confirmation (yes/no → edit or cancel) → save. Non-receipt images are rejected without calling Gemini.
 
 **Conversation state machine:** Multi-step flows (onboarding, expense collection, tax questions) are tracked in the `conversation_states` Supabase table. Each user has at most one active state. States are defined in `src/types.ts` as `ConversationStateType`.
 
@@ -47,9 +47,10 @@ There is no test framework (jest/vitest) — tests are manual scripts.
 
 - **ESM project** — `"type": "module"` in package.json, imports use `.js` extensions
 - **TypeScript target:** ES2022, module: ES2022
-- **AI model:** Gemini 2.5 Flash via direct REST API (no Google SDK for AI)
+- **AI model:** Gemini 2.5 Flash Lite via direct REST API (no Google SDK for AI)
 - **Database:** Supabase (PostgreSQL) — schema documented in `docs/DATABASE_SCHEMA.md`
-- **Bot framework:** `node-telegram-bot-api` in polling mode
+- **Bot framework:** `node-telegram-bot-api` (polling in dev, webhook in prod)
+- **Image processing:** `sharp` for compression before sending to Vision/Gemini APIs
 - **No formal test suite** — only manual test scripts in `src/test-*.ts`
 
 ## Deployment (Webhook + VPS + Cloudflare Tunnel)

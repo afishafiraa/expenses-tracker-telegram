@@ -127,6 +127,8 @@ export type ConversationStateType =
   | 'awaiting_tax_rate'
   | 'awaiting_tax_timing'
   | 'awaiting_confirmation'
+  | 'awaiting_rejection_choice'
+  | 'awaiting_edit'
   | 'awaiting_deactivate_confirmation';
 
 export interface ConversationState {
