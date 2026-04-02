@@ -3,6 +3,7 @@ import { DatabaseService } from '../services/database.service.js';
 import { MessageHandler } from './message.handler.js';
 import type { User, ConversationState, Currency } from '../types.js';
 import { normalizeYesNo, getMultiLangMessage } from '../utils/language.js';
+import { notifier } from '../services/notification.service.js';
 
 /**
  * Handles all confirmation flows
@@ -69,6 +70,7 @@ export class ConfirmationHandler {
         );
       } catch (error) {
         console.error('❌ Error saving expense:', error);
+        notifier.notify('Save Expense', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
         await this.bot.sendMessage(chatId, '❌ Failed to save. Please try again.');
       }
     } else if (response === 'no') {
@@ -103,6 +105,7 @@ export class ConfirmationHandler {
         );
       } catch (error) {
         console.error('❌ Error saving image expense:', error);
+        notifier.notify('Save Image Expense', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
         await this.bot.sendMessage(chatId, '❌ Failed to save. Please try again.');
       }
     } else if (response === 'no') {

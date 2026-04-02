@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { DatabaseService } from './database.service.js';
 import type { Currency } from '../types.js';
+import { notifier } from './notification.service.js';
 
 /**
  * ExchangeRate Service
@@ -45,6 +46,7 @@ export class ExchangeRateService {
       return currencies;
     } catch (error) {
       console.error('❌ Failed to fetch available currencies:', error);
+      notifier.notify('Exchange Rate', 'Failed to fetch available currencies: ' + (error as Error).message);
       throw error;
     }
   }
@@ -81,6 +83,7 @@ export class ExchangeRateService {
       return rates;
     } catch (error) {
       console.error(`❌ Failed to fetch rates for ${baseCurrency}:`, error);
+      notifier.notify('Exchange Rate', `Failed to fetch rates for ${baseCurrency}: ${(error as Error).message}`);
       throw error;
     }
   }
@@ -182,6 +185,7 @@ export class ExchangeRateService {
         await this.updateAllRates();
       } catch (error) {
         console.error('❌ Scheduled update failed:', error);
+        notifier.notify('Exchange Rate', 'Scheduled update failed: ' + (error as Error).message);
       }
     }, TWENTY_FOUR_HOURS);
   }

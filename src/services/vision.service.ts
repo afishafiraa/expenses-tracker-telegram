@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { google } from 'googleapis';
+import { notifier } from './notification.service.js';
 
 const CLIENT_EMAIL = process.env.GCP_CLIENT_EMAIL;
 const PRIVATE_KEY = process.env.GCP_PRIVATE_KEY?.replace(/\\n/g, '\n');
@@ -176,6 +177,7 @@ export class VisionService {
       return false;
     } catch (error) {
       console.error('❌ Vision API error:', error);
+      notifier.notify('Vision API', (error as Error).message, { stack: (error as Error).stack });
       // On error, allow the image through (don't block the user)
       return true;
     }

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import type { GeminiExtractedData } from '../types.js';
+import { notifier } from './notification.service.js';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = 'gemini-2.5-flash-lite';
@@ -139,11 +140,13 @@ export class GeminiService {
 
       if (data.error) {
         console.error('❌ Gemini API error:', data.error.message);
+        notifier.notify('Gemini API', data.error.message);
         return null;
       }
 
       if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
         console.error('❌ No response from Gemini');
+        notifier.notify('Gemini API', 'No response from Gemini (text extraction)');
         return null;
       }
 
@@ -162,6 +165,7 @@ export class GeminiService {
 
     } catch (error) {
       console.error('❌ Failed to extract bill data:', (error as Error).message);
+      notifier.notify('Gemini Text', (error as Error).message, { stack: (error as Error).stack });
       return null;
     }
   }
@@ -198,11 +202,13 @@ export class GeminiService {
 
       if (data.error) {
         console.error('❌ Gemini API error:', data.error.message);
+        notifier.notify('Gemini API', data.error.message);
         return null;
       }
 
       if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
         console.error('❌ No response from Gemini');
+        notifier.notify('Gemini API', 'No response from Gemini (image extraction)');
         return null;
       }
 
@@ -253,6 +259,7 @@ export class GeminiService {
 
     } catch (error) {
       console.error('❌ Failed to extract bill from image:', (error as Error).message);
+      notifier.notify('Gemini Image', (error as Error).message, { stack: (error as Error).stack });
       return null;
     }
   }

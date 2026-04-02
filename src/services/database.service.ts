@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { notifier } from './notification.service.js';
 import type {
   User,
   BillEntry,
@@ -71,6 +72,7 @@ export class DatabaseService {
       return newUser as User;
     } catch (error) {
       console.error('❌ Error getting/creating user:', error);
+      notifier.notify('Database', 'getOrCreateUser failed: ' + (error as Error).message);
       throw error;
     }
   }
@@ -119,6 +121,7 @@ export class DatabaseService {
       console.log(`✅ Expense saved: ${bill.vendor} - ${bill.amount} ${bill.currency}`);
     } catch (error) {
       console.error('❌ Error saving expense:', error);
+      notifier.notify('Database', 'saveExpense failed: ' + (error as Error).message);
       throw error;
     }
   }
