@@ -7,9 +7,8 @@ import { ConversationService } from '../services/conversation.service.js';
 import type { User, Currency, BillEntry } from '../types.js';
 import { normalizePaymentMethod } from '../utils/payment.js';
 import { getMultiLangMessage } from '../utils/language.js';
+import { DEFAULT_CURRENCY, roundAmount } from '../utils/currency.js';
 import { notifier } from '../services/notification.service.js';
-
-const DEFAULT_CURRENCY: Currency = 'JPY';
 
 /**
  * Handles incoming messages (text, photos)
@@ -88,15 +87,23 @@ export class MessageHandler {
 
       const imageBase64 = compressedBuffer.toString('base64');
 
-      // Validate with Cloud Vision: is this a receipt?
-      const isReceipt = await this.vision.isReceipt(imageBase64);
+      // Validate with Cloud Vision and get OCR text
+      const { isReceipt, ocrText } = await this.vision.validateReceipt(imageBase64);
       if (!isReceipt) {
         await this.bot.sendMessage(chatId, '🚫 This doesn\'t look like a receipt or invoice. Please send a photo of a bill, receipt, or invoice.');
         return;
       }
 
-      // Extract expense data with Gemini
-      const extractedData = await this.gemini.extractBillFromImage(imageBase64);
+      // OCR-first: use text extraction if OCR has enough content, else fall back to image
+      let extractedData;
+      if (ocrText.length >= 20) {
+        console.log(`📝 Using OCR text extraction (${ocrText.length} chars)`);
+        extractedData = await this.gemini.extractBillFromOcrText(ocrText);
+      }
+      if (!extractedData) {
+        console.log('🖼️ Falling back to image extraction');
+        extractedData = await this.gemini.extractBillFromImage(imageBase64);
+      }
       console.log('📊 Extracted data:', JSON.stringify(extractedData, null, 2));
 
       if (!extractedData || !extractedData.items || extractedData.items.length === 0) {
@@ -123,9 +130,14 @@ export class MessageHandler {
         })
         .join('\n');
 
-      const truncatedWarning = (extractedData as any)._truncated
-        ? '\n\n⚠️ Note: The receipt was too long — some items may be missing.'
-        : '';
+      const warnings: string[] = [];
+      if ((extractedData as any)._truncated) {
+        warnings.push('⚠️ The receipt was too long — some items may be missing.');
+      }
+      if ((extractedData as any)._totalMismatch) {
+        warnings.push('⚠️ Items total doesn\'t match receipt total — some items may be missing. Please check.');
+      }
+      const warningText = warnings.length > 0 ? '\n\n' + warnings.join('\n') : '';
 
       await this.bot.sendMessage(
         chatId,
@@ -135,7 +147,7 @@ export class MessageHandler {
 🏪 Vendor: ${extractedData.vendor}
 💳 Payment: ${extractedData.paymentMethod}
 
-${itemsList}${truncatedWarning}
+${itemsList}${warningText}
 
 Is this correct?\n\n${getMultiLangMessage('yes_no')}`
       );
@@ -154,17 +166,17 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
 
     for (const item of data.items) {
       const itemCurrency = (item.currency || data.detectedCurrency || userCurrency) as Currency;
+      const amount = roundAmount(item.amount, itemCurrency);
+      const taxMultiplier = 1 + (item.taxRate || 0);
 
-      // Round amount to 2 decimal places
-      const amount = Math.ceil(item.amount);
-
-      // Get exchange rate if needed
+      // Contract: amount_in_default_currency is ALWAYS the final tax-inclusive
+      // amount in the user's default currency (matches saveExpenseFromData).
       let exchangeRate = 1.0;
-      let amountInDefaultCurrency = amount;
+      let amountInDefaultCurrency = roundAmount(amount * taxMultiplier, userCurrency as Currency);
 
       if (itemCurrency !== userCurrency) {
         exchangeRate = await this.database.getExchangeRate(itemCurrency, userCurrency as Currency);
-        amountInDefaultCurrency = Math.ceil(amount * exchangeRate);
+        amountInDefaultCurrency = roundAmount(amount * taxMultiplier * exchangeRate, userCurrency as Currency);
       }
 
       const billEntry: BillEntry = {
@@ -176,7 +188,7 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
         currency: itemCurrency,
         taxRate: item.taxRate || 0,
         paymentMethod: normalizePaymentMethod(data.paymentMethod || 'Unknown'),
-        description: item.description || '',
+        description: '',
         amountInDefaultCurrency,
         exchangeRate,
         source: 'image',
@@ -231,7 +243,7 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
         return;
       }
 
-      // All basic info available, check if we need to ask about tax
+      // All basic info available — go straight to confirmation
       const expenseData = {
         item: detected.item,
         amount: detected.amount,
@@ -240,14 +252,21 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
         category: detected.category || 'Other',
         payment_method: normalizePaymentMethod(detected.paymentMethod),
         tax_rate: detected.taxRate || 0,
-        has_tax: hasTaxMention ? undefined : false,
+        has_tax: hasTaxMention || false,
+        tax_included: true,
       };
 
-      // Always ask about tax
-      await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', expenseData as any);
+      await this.database.setConversationState(user.id, 'awaiting_confirmation', expenseData as any);
+
+      const currency = detectedCurrency || (user.default_currency as Currency) || DEFAULT_CURRENCY;
+      const amount = roundAmount(detected.amount, currency);
+      const taxInfo = expenseData.tax_rate > 0
+        ? `\nTax: ${(expenseData.tax_rate * 100).toFixed(0)}%`
+        : '';
+
       await this.bot.sendMessage(
         chatId,
-        `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
+        `📝 Please confirm:\n\nItem: ${expenseData.item}\nAmount: ${amount} ${currency}${taxInfo}\nVendor: ${expenseData.vendor}\nPayment: ${expenseData.payment_method}\n\nIs this correct? (Yes/No)\n💡 To add/edit tax, reply "tax 10%" or "no tax"`
       );
     } catch (error) {
       console.error('❌ Error handling expense detection:', error);
@@ -262,35 +281,32 @@ Is this correct?\n\n${getMultiLangMessage('yes_no')}`
   async saveExpenseFromData(user: User, data: any): Promise<void> {
     const currency = (data.currency || user.default_currency || DEFAULT_CURRENCY) as Currency;
     const userCurrency = user.default_currency || DEFAULT_CURRENCY;
+    const amount = roundAmount(data.amount, currency);
+    const taxRate = data.tax_rate || 0;
 
-    // Round amount up to whole number (no decimals when paying)
-    const amount = Math.ceil(data.amount);
-
-    // Get exchange rate if needed
     let exchangeRate = 1.0;
     let amountInDefaultCurrency = amount;
 
     if (currency !== userCurrency) {
       exchangeRate = await this.database.getExchangeRate(currency, userCurrency as Currency);
-      amountInDefaultCurrency = Math.ceil(amount * exchangeRate);
+      const taxMultiplier = 1 + taxRate;
+      amountInDefaultCurrency = roundAmount(amount * taxMultiplier * exchangeRate, userCurrency as Currency);
+    } else {
+      const taxMultiplier = 1 + taxRate;
+      amountInDefaultCurrency = roundAmount(amount * taxMultiplier, userCurrency as Currency);
     }
-
-    // Calculate effective price with tax
-    const taxRate = data.tax_rate || 0;
-    const effectiveAmount = amount; // Already adjusted if tax_included=true
-    const effectiveInDefault = amountInDefaultCurrency;
 
     const billEntry: BillEntry = {
       date: new Date().toISOString().split('T')[0],
       vendor: data.vendor,
       item: data.item,
       category: data.category || 'Other',
-      amount: effectiveAmount,
+      amount,
       currency,
       taxRate,
       paymentMethod: data.payment_method || 'Unknown',
-      description: data.description || '',
-      amountInDefaultCurrency: effectiveInDefault,
+      description: '',
+      amountInDefaultCurrency,
       exchangeRate,
       source: 'chat',
     };

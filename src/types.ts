@@ -103,10 +103,9 @@ export interface GeminiExtractedData {
   items: Array<{
     item: string;
     category: string;
-    amount: number; // Amount before tax
-    taxRate: number; // 0, 0.07, 0.08, 0.10, etc.
+    amount: number;
+    taxRate: number;
     currency?: Currency;
-    description: string;
   }>;
   paymentMethod: string;
   detectedCurrency?: Currency;
@@ -128,8 +127,7 @@ export type ConversationStateType =
   | 'awaiting_tax_timing'
   | 'awaiting_confirmation'
   | 'awaiting_rejection_choice'
-  | 'awaiting_edit'
-  | 'awaiting_deactivate_confirmation';
+  | 'awaiting_edit';
 
 export interface ConversationState {
   id: string;

@@ -36,7 +36,7 @@ const bot = isDev
 
 const database = new DatabaseService();
 const exchangeRateService = new ExchangeRateService(database);
-const controller = new BotController(bot);
+const controller = new BotController(bot, database);
 
 let exchangeRateInterval: NodeJS.Timeout | null = null;
 let server: http.Server | null = null;
@@ -45,13 +45,14 @@ let server: http.Server | null = null;
 // Command Routes (same for both modes)
 // ========================================
 
-bot.onText(/\/start/, (msg) => controller.handleStart(msg));
-bot.onText(/\/help/, (msg) => controller.handleHelp(msg));
-bot.onText(/\/profile/, (msg) => controller.handleProfile(msg));
-bot.onText(/\/setcurrency/, (msg) => controller.handleSetCurrency(msg));
-bot.onText(/\/totalspend/, (msg) => controller.handleTotalSpend(msg));
-bot.onText(/\/export/, (msg) => controller.handleExport(msg));
-bot.onText(/\/deactivate/, (msg) => controller.handleDeactivate(msg));
+bot.onText(/^\/start(?:\s|$)/, (msg) => controller.handleStart(msg));
+bot.onText(/^\/help(?:\s|$)/, (msg) => controller.handleHelp(msg));
+bot.onText(/^\/profile(?:\s|$)/, (msg) => controller.handleProfile(msg));
+bot.onText(/^\/setcurrency(?:\s|$)/, (msg) => controller.handleSetCurrency(msg));
+bot.onText(/^\/totalspend(?:\s|$)/, (msg) => controller.handleTotalSpend(msg));
+bot.onText(/^\/export(?:\s|$)/, (msg) => controller.handleExport(msg));
+bot.onText(/^\/deactivate(?:\s|$)/, (msg) => controller.handleDeactivate(msg));
+bot.onText(/^\/cancel(?:\s|$)/, (msg) => controller.handleCancel(msg));
 
 bot.on('message', (msg) => controller.handleMessage(msg));
 

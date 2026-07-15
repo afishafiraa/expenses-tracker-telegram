@@ -3,6 +3,7 @@ import { DatabaseService } from '../services/database.service.js';
 import { MessageHandler } from './message.handler.js';
 import type { User, ConversationState, Currency } from '../types.js';
 import { normalizeYesNo, getMultiLangMessage } from '../utils/language.js';
+import { roundAmount } from '../utils/currency.js';
 import { notifier } from '../services/notification.service.js';
 
 /**
@@ -29,6 +30,11 @@ export class ConfirmationHandler {
   ): Promise<void> {
     const data = state.data as any;
 
+    if (data.saving) {
+      await this.bot.sendMessage(chatId, '⏳ Still saving, please wait...');
+      return;
+    }
+
     // Deactivate account confirmation
     if (data.action === 'deactivate') {
       await this.handleDeactivateConfirmation(chatId, user, input);
@@ -54,24 +60,57 @@ export class ConfirmationHandler {
     data: any,
     input: string
   ): Promise<void> {
+    const cleaned = input.trim().toLowerCase();
+
+    // Handle inline tax commands at confirmation step
+    const taxMatch = cleaned.match(/^tax\s+(\d+(?:\.\d+)?)\s*%?$/i);
+    if (taxMatch) {
+      let rate = parseFloat(taxMatch[1]);
+      if (rate > 1) rate = rate / 100;
+      data.tax_rate = rate;
+      data.has_tax = true;
+      await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
+      const currency = data.currency || user.default_currency || 'JPY';
+      const amount = roundAmount(data.amount, currency as Currency);
+      await this.bot.sendMessage(
+        chatId,
+        `✅ Tax set to ${(rate * 100).toFixed(0)}%\n\n📝 Please confirm:\n\nItem: ${data.item}\nAmount: ${amount} ${currency}\nTax: ${(rate * 100).toFixed(0)}%\nVendor: ${data.vendor}\nPayment: ${data.payment_method}\n\nIs this correct? (Yes/No)`
+      );
+      return;
+    }
+
+    if (cleaned === 'no tax' || cleaned === 'notax') {
+      data.tax_rate = 0;
+      data.has_tax = false;
+      await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
+      const currency = data.currency || user.default_currency || 'JPY';
+      const amount = roundAmount(data.amount, currency as Currency);
+      await this.bot.sendMessage(
+        chatId,
+        `✅ Tax removed.\n\n📝 Please confirm:\n\nItem: ${data.item}\nAmount: ${amount} ${currency}\nVendor: ${data.vendor}\nPayment: ${data.payment_method}\n\nIs this correct? (Yes/No)`
+      );
+      return;
+    }
+
     const response = normalizeYesNo(input);
 
     if (response === 'yes') {
-      // Clear state first to prevent double-confirm
-      await this.database.clearConversationState(user.id);
+      await this.database.setConversationState(user.id, 'awaiting_confirmation', { ...data, saving: true });
       await this.bot.sendMessage(chatId, '💾 Saving...');
       try {
         await this.messageHandler.saveExpenseFromData(user, data);
-        const currency = data.currency || user.default_currency;
-        const amount = Math.ceil(data.amount);
+        await this.database.clearConversationState(user.id);
+        const currency = (data.currency || user.default_currency || 'JPY') as Currency;
+        const amount = roundAmount(data.amount, currency);
         await this.bot.sendMessage(
           chatId,
           `✅ Recorded!\n\n${data.item} - ${amount} ${currency}\nat ${data.vendor}`
         );
       } catch (error) {
+        await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
         console.error('❌ Error saving expense:', error);
         notifier.notify('Save Expense', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
-        await this.bot.sendMessage(chatId, '❌ Failed to save. Please try again.');
+        await this.bot.sendMessage(chatId, '❌ Failed to save. Please try again with Yes/No.');
       }
     } else if (response === 'no') {
       await this.askRejectionReason(chatId, user, data);
@@ -92,11 +131,11 @@ export class ConfirmationHandler {
     const response = normalizeYesNo(input);
 
     if (response === 'yes') {
-      // Clear state first to prevent double-confirm
-      await this.database.clearConversationState(user.id);
+      await this.database.setConversationState(user.id, 'awaiting_confirmation', { ...data, saving: true });
       await this.bot.sendMessage(chatId, '💾 Saving...');
       try {
         await this.messageHandler.saveImageExpense(user, data);
+        await this.database.clearConversationState(user.id);
 
         const count = data.items.length;
         await this.bot.sendMessage(
@@ -104,9 +143,10 @@ export class ConfirmationHandler {
           `✅ Recorded ${count} item${count > 1 ? 's' : ''} from ${data.vendor}!`
         );
       } catch (error) {
+        await this.database.setConversationState(user.id, 'awaiting_confirmation', { ...data, action: 'image_expense' });
         console.error('❌ Error saving image expense:', error);
         notifier.notify('Save Image Expense', (error as Error).message, { userId: user.telegram_id, username: user.username, stack: (error as Error).stack });
-        await this.bot.sendMessage(chatId, '❌ Failed to save. Please try again.');
+        await this.bot.sendMessage(chatId, '❌ Failed to save. Please try again with Yes/No.');
       }
     } else if (response === 'no') {
       await this.askRejectionReason(chatId, user, data);
@@ -207,7 +247,7 @@ export class ConfirmationHandler {
       } else {
         // Chat expense — show single item
         const currency = data.currency || user.default_currency;
-        const amount = Math.ceil(data.amount);
+        const amount = roundAmount(data.amount, (currency || 'JPY') as Currency);
         await this.bot.sendMessage(
           chatId,
           `📋 Updated expense:\n\n${data.item} - ${amount} ${currency}\nat ${data.vendor}\n\nIs this correct now?\n\n${getMultiLangMessage('yes_no')}`
@@ -237,10 +277,10 @@ export class ConfirmationHandler {
    * Apply a single edit command to the data
    */
   private applyEdit(data: any, input: string): string | null {
-    // Edit vendor
+    // Edit vendor — strip filler words like "is", "was", "at"
     const vendorMatch = input.match(/^vendor\s+(.+)/i);
     if (vendorMatch) {
-      data.vendor = vendorMatch[1].trim();
+      data.vendor = vendorMatch[1].trim().replace(/^(is|was|at|from|to)\s+/i, '').trim();
       return `Vendor updated to "${data.vendor}"`;
     }
 
