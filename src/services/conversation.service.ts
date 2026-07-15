@@ -4,6 +4,13 @@ import type { Currency } from '../types.js';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = 'gemini-2.5-flash-lite';
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const API_TIMEOUT_MS = 30000;
+
+function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = API_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timeout));
+}
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -48,9 +55,12 @@ export class ConversationService {
     try {
       const prompt = this.buildConversationPrompt(message, context);
 
-      const response = await fetch(`${API_URL}?key=${GEMINI_API_KEY}`, {
+      const response = await fetchWithTimeout(API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': GEMINI_API_KEY!,
+        },
         body: JSON.stringify({
           contents: [
             {
@@ -59,7 +69,31 @@ export class ConversationService {
           ],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 512,
+            responseMimeType: 'application/json',
+            responseJsonSchema: {
+              type: 'object',
+              properties: {
+                reply: { type: 'string', description: 'Friendly response to the user' },
+                expenseDetected: {
+                  type: 'object',
+                  properties: {
+                    isExpense: { type: 'boolean' },
+                    item: { type: 'string' },
+                    amount: { type: 'number' },
+                    currency: { type: 'string' },
+                    vendor: { type: 'string' },
+                    category: { type: 'string' },
+                    paymentMethod: { type: 'string' },
+                    taxRate: { type: 'number' },
+                    hasTaxMention: { type: 'boolean' },
+                    confidence: { type: 'string', description: 'high, medium, or low' },
+                  },
+                  required: ['isExpense', 'confidence'],
+                },
+              },
+              required: ['reply', 'expenseDetected'],
+            },
           }
         })
       });
@@ -83,28 +117,12 @@ export class ConversationService {
       const resultText = data.candidates[0].content.parts[0].text.trim();
       console.log('💬 Conversation raw response:', resultText.substring(0, 300));
 
-      // Parse response - try JSON first, fallback to plain text
       let parsed: any;
       try {
-        let jsonText = resultText
-          .replace(/```json\n?/g, '')
-          .replace(/```\n?/g, '')
-          .trim();
-
-        // Extract JSON object
-        const start = jsonText.indexOf('{');
-        const end = jsonText.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-          jsonText = jsonText.substring(start, end + 1);
-        }
-
-        parsed = JSON.parse(jsonText);
+        parsed = JSON.parse(resultText);
       } catch {
-        // Gemini returned plain text instead of JSON, use it as reply
         console.warn('⚠️ Conversation response was not JSON, using as plain text');
-        return {
-          reply: resultText,
-        };
+        return { reply: resultText };
       }
 
       return {
@@ -121,72 +139,21 @@ export class ConversationService {
   }
 
   private buildConversationPrompt(message: string, context: ConversationContext): string {
-    return `You are a friendly AI assistant named BillNot that helps track expenses.
+    return `You are BillNot, a smart and friendly expense-tracking AI assistant. You talk to ${context.userName}. Default currency: ${context.userCurrency}.
 
-User context:
-- Name: ${context.userName}
-- Default currency: ${context.userCurrency}
+PERSONALITY: You are helpful, concise, and proactive. You guide users naturally. You feel like chatting with a smart friend who helps track money.
 
-Your task:
-1. Respond naturally and helpfully to the user's message
-2. Detect if they're mentioning an expense (buying something, spending money)
-3. If it's an expense, extract available details
+BEHAVIOR:
+- If the user sends a greeting, test message, or unclear text: reply warmly and tell them what you can do. Example: "Hey ${context.userName}! I'm your expense tracker. You can: 📝 Tell me what you bought (e.g. 'coffee 500 yen at Starbucks'), 📸 Send a receipt photo, or use /help for all commands."
+- If the user mentions buying/spending/paying something: extract the expense details and confirm naturally. Include what you detected in your reply. Example: "Got it! Tissue for 330 JPY. Let me save that for you."
+- If the message is casual chat (not expense-related): reply briefly and friendly, then gently remind you're here for expense tracking.
+- NEVER reply with just "How can I help you?" — always give specific examples of what the user can do.
 
-IMPORTANT: Currency detection is CRITICAL. Check these keywords carefully:
-• "yen" or "¥" → return currency: "JPY"
-• "baht" or "฿" → return currency: "THB"
-• "rupiah" or "rp" or "idr" → return currency: "IDR"
-• "dong" or "vnd" → return currency: "VND"
-• "ringgit" or "myr" → return currency: "MYR"
-• "peso" or "php" → return currency: "PHP"
-• "won" or "krw" → return currency: "KRW"
-• "yuan" or "cny" → return currency: "CNY"
-• "dollar" or "usd" or "$" → return currency: "USD"
-• "sgd" → return currency: "SGD"
+EXPENSE DETECTION: Extract item, amount, currency, vendor, category, paymentMethod if mentioned.
+Currency: ¥/yen/円=JPY, ฿/baht=THB, Rp/rupiah=IDR, ₫/dong=VND, RM/ringgit=MYR, ₱/peso=PHP, ₩/won=KRW, 元/yuan=CNY, $/dollar=USD, S$/sgd=SGD. No match→${context.userCurrency}.
+Tax: "with tax"/"税込"/"dengan pajak"→hasTaxMention:true. "tax 8%"→taxRate:0.08. No tax mention→taxRate:0, hasTaxMention:false.
+Categories: Food/Transport/Utilities/Rent/Subscription/Shopping/Entertainment/Healthcare/Other.
 
-If NO currency keyword found in message, use: "${context.userCurrency}"
-
-IMPORTANT: Detect tax mentions carefully!
-- If user says "with tax", "plus tax", "including tax", "税込", "dengan pajak", etc. → set hasTaxMention: true
-- If user specifies rate like "tax 8%", "8% tax" → set taxRate: 0.08 (as decimal)
-- If just "with tax" but no rate → hasTaxMention: true, taxRate: undefined
-
-Return JSON format:
-{
-  "reply": "Your friendly response to the user",
-  "expenseDetected": {
-    "isExpense": true/false,
-    "item": "item name (if mentioned)",
-    "amount": number (if mentioned),
-    "currency": "MUST be one of: JPY/THB/USD/IDR/VND/MYR/PHP/KRW/CNY/SGD/HKD/TWD/INR (REQUIRED - detect from message or use ${context.userCurrency})",
-    "vendor": "store/vendor name (if mentioned)",
-    "category": "Food/Transport/Shopping/etc (if can infer)",
-    "paymentMethod": "Cash/Credit/etc (if mentioned)",
-    "taxRate": 0.08 (if user mentions tax rate like "8%" - convert to decimal, otherwise undefined),
-    "hasTaxMention": true/false (true if user mentions "with tax", "plus tax", etc. even without rate),
-    "confidence": "high/medium/low"
-  }
-}
-
-Examples:
-
-User: "taiyaki 110 yen"
-Response: {"reply":"Taiyaki! 🍡 Let me track that.","expenseDetected":{"isExpense":true,"item":"taiyaki","amount":110,"currency":"JPY","category":"Food","confidence":"high"}}
-
-User: "bought bread with tax 8%"
-Response: {"reply":"Got it! How much was the bread?","expenseDetected":{"isExpense":true,"item":"bread","category":"Food","hasTaxMention":true,"taxRate":0.08,"confidence":"high"}}
-
-User: "hi!"
-Response: {"reply":"Hey ${context.userName}! 👋 What can I help you track?","expenseDetected":{"isExpense":false,"confidence":"high"}}
-
-IMPORTANT:
-- Be friendly and conversational
-- Use the user's name occasionally
-- If they mention buying/spending, help them track it
-- Return ONLY the JSON object, no markdown formatting
-
-User message: "${message}"
-
-Response:`;
+User message: "${message}"`;
   }
 }

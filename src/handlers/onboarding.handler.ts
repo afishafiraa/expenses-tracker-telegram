@@ -58,6 +58,7 @@ Examples: Japan, Singapore, Indonesia, Vietnam`
       (key) => key.toLowerCase() === country.toLowerCase()
     );
 
+    const countryRecognized = Boolean(countryKey);
     if (countryKey) {
       currency = COUNTRY_CURRENCY_MAP[countryKey];
       timezone = COUNTRY_TIMEZONE_MAP[countryKey];
@@ -75,13 +76,17 @@ Examples: Japan, Singapore, Indonesia, Vietnam`
 
     const nickname = user.nickname || user.first_name || 'there';
 
+    const unmappedNote = countryRecognized
+      ? ''
+      : `\n\n⚠️ I don't have ${country} mapped yet, so I've defaulted you to ${currency}. You can change it anytime with /setcurrency [CODE].`;
+
     await this.bot.sendMessage(
       chatId,
       `🎉 All set, ${nickname}!
 
 📍 Country: ${country}
 💰 Default Currency: ${currency}
-🕐 Timezone: ${timezone}
+🕐 Timezone: ${timezone}${unmappedNote}
 
 You're ready to track expenses! Just send me:
 • "lunch 89 at 7-11"

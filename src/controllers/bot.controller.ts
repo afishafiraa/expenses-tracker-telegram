@@ -6,7 +6,21 @@ import { ExpenseHandler } from '../handlers/expense.handler.js';
 import { MessageHandler } from '../handlers/message.handler.js';
 import { ConfirmationHandler } from '../handlers/confirmation.handler.js';
 import { OnboardingHandler } from '../handlers/onboarding.handler.js';
+import { isCancelIntent } from '../utils/language.js';
 import type { User } from '../types.js';
+
+// States that belong to first-time setup — users shouldn't be able to
+// cancel out of these, they need currency/timezone before tracking works.
+const ONBOARDING_STATES = ['awaiting_nickname', 'awaiting_country'];
+
+// Tax states already treat cancel-words locally as "skip tax and continue",
+// so the universal cancel must not intercept them.
+const CANCEL_EXEMPT_STATES = [
+  ...ONBOARDING_STATES,
+  'awaiting_tax_inclusion',
+  'awaiting_tax_rate',
+  'awaiting_tax_timing',
+];
 
 /**
  * Main Bot Controller - Routes messages to appropriate handlers
@@ -23,8 +37,8 @@ export class BotController {
   private confirmationHandler: ConfirmationHandler;
   private onboardingHandler: OnboardingHandler;
 
-  constructor(private bot: TelegramBot) {
-    this.database = new DatabaseService();
+  constructor(private bot: TelegramBot, database: DatabaseService) {
+    this.database = database;
     this.exportService = new ExportService(this.database);
 
     // Initialize handlers
@@ -73,6 +87,24 @@ export class BotController {
     await this.commandHandler.handleDeactivate(msg, user);
   }
 
+  async handleCancel(msg: TelegramBot.Message): Promise<void> {
+    const user = await this.getUser(msg);
+    const state = await this.database.getConversationState(user.id);
+
+    if (!state || state.state === 'idle') {
+      await this.bot.sendMessage(msg.chat.id, 'Nothing to cancel. Send me an expense whenever you\'re ready!');
+      return;
+    }
+
+    if (ONBOARDING_STATES.includes(state.state)) {
+      await this.bot.sendMessage(msg.chat.id, 'Let\'s finish setting up your account first — it only takes a moment.');
+      return;
+    }
+
+    await this.database.clearConversationState(user.id);
+    await this.bot.sendMessage(msg.chat.id, '❌ Cancelled. Nothing was saved.');
+  }
+
   // ========================================
   // Message Handler
   // ========================================
@@ -105,6 +137,10 @@ export class BotController {
 
       // Handle photo messages
       if (msg.photo) {
+        if (conversationState) {
+          await this.bot.sendMessage(chatId, '⚠️ You have a pending action. Please confirm or cancel it first before sending a new photo.');
+          return;
+        }
         await this.messageHandler.handlePhotoMessage(chatId, user, msg);
         return;
       }
@@ -124,6 +160,14 @@ export class BotController {
     state: any,
     input: string
   ): Promise<void> {
+    // Universal escape hatch: cancel-words exit any flow except onboarding
+    // and the tax steps (which use cancel-words to mean "skip tax").
+    if (isCancelIntent(input) && !CANCEL_EXEMPT_STATES.includes(state.state)) {
+      await this.database.clearConversationState(user.id);
+      await this.bot.sendMessage(chatId, '❌ Cancelled. Nothing was saved.');
+      return;
+    }
+
     switch (state.state) {
       // Onboarding
       case 'awaiting_nickname':

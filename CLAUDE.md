@@ -24,26 +24,28 @@ There is no test framework (jest/vitest) — tests are manual scripts.
 **Controller-Handler pattern:**
 - `src/controllers/bot.controller.ts` — Thin routing layer. Routes Telegram messages to the appropriate handler based on command or conversation state. Should stay under 200 lines.
 - `src/handlers/` — Business logic split by concern:
-  - `command.handler.ts` — Slash commands (/start, /help, /profile, /setcurrency, /totalspend, /export, /deactivate)
+  - `command.handler.ts` — Slash commands (/start, /help, /profile, /setcurrency, /totalspend, /export, /cancel, /deactivate)
   - `message.handler.ts` — Text and photo message processing, AI expense detection, saving expenses
-  - `expense.handler.ts` — Multi-step expense collection (amount, vendor, payment, tax flow). Tax is always asked after amount input.
+  - `expense.handler.ts` — Multi-step expense collection (amount, vendor, payment). Tax is handled inline at confirmation (`tax 10%` / `no tax`); an optional multi-step tax flow (inclusion → rate → timing) also exists. Amount parsing tolerates thousands separators via `parseAmount`.
   - `confirmation.handler.ts` — Yes/no confirmation handling (clears state before saving to prevent double-confirm). On rejection, offers edit or cancel options.
   - `onboarding.handler.ts` — New user setup (nickname, country)
 
 **Services:**
 - `database.service.ts` — Supabase client, all DB operations. Includes duplicate expense prevention (checks user+date+item+amount+vendor before insert).
-- `gemini.service.ts` — Gemini 2.5 Flash Lite API for bill extraction from text/images (direct REST calls, no SDK). Separate prompts for text vs image extraction. Includes JSON truncation repair and receipt total validation.
-- `vision.service.ts` — Google Cloud Vision API for receipt validation. Checks labels and text patterns to reject non-receipt images before Gemini is called.
+- `gemini.service.ts` — Gemini 2.5 Flash Lite API for bill extraction (direct REST calls, no SDK). Separate prompts for text, OCR-text, and image extraction. Includes JSON truncation repair and receipt total validation.
+- `vision.service.ts` — Google Cloud Vision API for receipt validation. `validateReceipt()` returns `{ isReceipt, ocrText }` — it both rejects non-receipt images and returns the OCR text used for OCR-first extraction.
 - `conversation.service.ts` — Gemini-powered conversational AI that detects expenses from natural chat
 - `exchangeRate.service.ts` — Fetches and caches exchange rates daily via Frankfurter API
 - `export.service.ts` — Excel export via exceljs
 - `notification.service.ts` — Sends critical error notifications to a Telegram chat via the dev bot. Singleton `notifier` export. Rate-limited (1 msg/5s). Used alongside `console.error()` in all handlers/services.
 
-**Image processing flow:** Photo → download once → compress with sharp (1536x2048, JPEG 85%) → Cloud Vision validation (is receipt?) → if yes, Gemini extraction → user confirmation (yes/no → edit or cancel) → save. Non-receipt images are rejected without calling Gemini.
+**Image processing flow:** Photo → download once → compress with sharp (1536x2048, JPEG 85%) → Cloud Vision validation + OCR (is receipt?) → if yes, OCR-first extraction (OCR text ≥ 20 chars → `extractBillFromOcrText`, else fall back to `extractBillFromImage`) → user confirmation (yes/no → edit or cancel) → save. Non-receipt images are rejected without calling Gemini.
 
 **Conversation state machine:** Multi-step flows (onboarding, expense collection, tax questions) are tracked in the `conversation_states` Supabase table. Each user has at most one active state. States are defined in `src/types.ts` as `ConversationStateType`.
 
-**Utilities:** `src/utils/` contains `payment.ts` (normalize payment methods), `vendor.ts`, `language.ts` (multi-language yes/no messages).
+**Utilities:** `src/utils/` contains `payment.ts` (normalize payment methods), `vendor.ts`, `language.ts` (multi-language yes/no + cancel-intent), and `currency.ts` (single source of truth for `roundAmount`, `parseAmount`, `DEFAULT_CURRENCY`, `ZERO_DECIMAL_CURRENCIES` — money math is centralized here, not duplicated in handlers).
+
+**Money/tax contract:** `expenses.amount_in_default_currency` is always the FINAL, tax-inclusive amount in the user's default currency. All save paths (text/image × same/cross-currency) apply `(1 + taxRate)` when computing it; downstream readers (`/totalspend`, export) must NOT re-apply tax.
 
 ## Key Technical Details
 

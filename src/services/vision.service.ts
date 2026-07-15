@@ -44,6 +44,11 @@ const RECEIPT_KEYWORDS = [
   '总计', '小计', '税额', '收据', '发票', '付款', '金额',
 ];
 
+export interface ReceiptValidationResult {
+  isReceipt: boolean;
+  ocrText: string;
+}
+
 export class VisionService {
   private vision;
 
@@ -63,14 +68,10 @@ export class VisionService {
     this.vision = google.vision({ version: 'v1', auth });
   }
 
-  /**
-   * Check if an image is a receipt/bill/invoice using Cloud Vision API.
-   * Returns true if the image looks like a receipt, false otherwise.
-   */
-  async isReceipt(imageBase64: string): Promise<boolean> {
+  async validateReceipt(imageBase64: string): Promise<ReceiptValidationResult> {
     if (!this.vision) {
       console.warn('⚠️ Vision API not configured, skipping receipt validation');
-      return true;
+      return { isReceipt: true, ocrText: '' };
     }
 
     try {
@@ -91,7 +92,7 @@ export class VisionService {
       const result = response.data.responses?.[0];
       if (!result) {
         console.log('⚠️ No Vision API response');
-        return false;
+        return { isReceipt: false, ocrText: '' };
       }
 
       // Get labels
@@ -100,6 +101,8 @@ export class VisionService {
 
       console.log(`🏷️ Vision labels: ${labels.join(', ')}`);
 
+      const fullText = result.textAnnotations?.[0]?.description || '';
+
       // Check reject labels first — if image is clearly not a receipt, reject immediately
       const hasRejectLabel = labels.some((l: string) =>
         REJECT_LABELS.some((rl) => l.includes(rl))
@@ -107,7 +110,7 @@ export class VisionService {
       if (hasRejectLabel) {
         const matched = labels.filter((l: string) => REJECT_LABELS.some((rl) => l.includes(rl)));
         console.log(`🚫 Rejected by labels: ${matched.join(', ')}`);
-        return false;
+        return { isReceipt: false, ocrText: fullText };
       }
 
       // Check strong receipt labels
@@ -123,8 +126,6 @@ export class VisionService {
       console.log(`✅ Strong label matches: ${strongMatches.join(', ') || 'none'}`);
       console.log(`📄 Weak label matches: ${weakMatches.join(', ') || 'none'}`);
 
-      // Check text content
-      const fullText = result.textAnnotations?.[0]?.description || '';
       const textLength = fullText.length;
 
       // Count receipt keyword matches in text
@@ -152,34 +153,33 @@ export class VisionService {
       // 1. Strong label match → accept
       if (strongMatches.length >= 1) {
         console.log('📋 Receipt detected: strong label match');
-        return true;
+        return { isReceipt: true, ocrText: fullText };
       }
 
       // 2. Weak labels + receipt keywords in text + multiple price lines → accept
       if (weakMatches.length >= 1 && keywordMatches.length >= 2 && priceLineCount >= 2) {
         console.log('📋 Receipt detected: weak labels + keywords + price lines');
-        return true;
+        return { isReceipt: true, ocrText: fullText };
       }
 
       // 3. Text has receipt keywords + price lines → accept
       if (keywordMatches.length >= 2 && priceLineCount >= 2) {
         console.log('📋 Receipt detected: text evidence (keywords + prices)');
-        return true;
+        return { isReceipt: true, ocrText: fullText };
       }
 
       // 4. Many keywords with at least one price → accept (single-item receipts like tolls, parking)
       if (keywordMatches.length >= 3 && priceLineCount >= 1) {
         console.log('📋 Receipt detected: many keywords + price line');
-        return true;
+        return { isReceipt: true, ocrText: fullText };
       }
 
       console.log('🚫 Not a receipt');
-      return false;
+      return { isReceipt: false, ocrText: fullText };
     } catch (error) {
       console.error('❌ Vision API error:', error);
       notifier.notify('Vision API', (error as Error).message, { stack: (error as Error).stack });
-      // On error, allow the image through (don't block the user)
-      return true;
+      return { isReceipt: true, ocrText: '' };
     }
   }
 }

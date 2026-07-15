@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import ExcelJS from 'exceljs';
 import type { DatabaseService } from './database.service.js';
+import type { Currency } from '../types.js';
+import { roundAmount } from '../utils/currency.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -47,14 +49,25 @@ export class ExportService {
   async exportToExcel(
     userId: string,
     userName: string,
-    userCurrency: string
+    userCurrency: string,
+    targetQuarter?: number,
+    targetYear?: number
   ): Promise<{ filePath: string; quarterInfo: string }> {
     try {
       const now = new Date();
-      const year = now.getFullYear();
+      const currentYear = now.getFullYear();
       const currentMonth = now.getMonth() + 1;
+      const currentQuarterInfo = this.getQuarterInfo(now);
 
-      const { quarter, startMonth, endMonth } = this.getQuarterInfo(now);
+      // Use target quarter/year if specified, otherwise current
+      const year = targetYear || currentYear;
+      const quarter = targetQuarter || currentQuarterInfo.quarter;
+      const startMonth = (quarter - 1) * 3 + 1;
+      const endMonth = quarter * 3;
+
+      // For current quarter, limit to current month; for past quarters, include all months
+      const isCurrentQuarter = year === currentYear && quarter === currentQuarterInfo.quarter;
+      const maxMonth = isCurrentQuarter ? Math.min(endMonth, currentMonth) : endMonth;
 
       console.log(`📊 Exporting Q${quarter} expenses for user ${userId}...`);
 
@@ -66,8 +79,8 @@ export class ExportService {
       let totalSheets = 0;
       let totalExpenses = 0;
 
-      // Generate sheets for each month in the quarter (up to current month)
-      for (let month = startMonth; month <= Math.min(endMonth, currentMonth); month++) {
+      // Generate sheets for each month in the quarter (up to current month for current quarter)
+      for (let month = startMonth; month <= maxMonth; month++) {
         const expenses = await this.database.getMonthlyExpenses(userId, year, month);
 
         // Skip months with no expenses
@@ -107,30 +120,34 @@ export class ExportService {
         expenses.forEach((exp) => {
           // Original price (if currency is different from user's default)
           const originalPrice = exp.currency !== userCurrency
-            ? `${Math.ceil(Number(exp.amount))} ${exp.currency}`
+            ? `${roundAmount(Number(exp.amount), exp.currency as Currency)} ${exp.currency}`
             : '';
 
-          // Price in user's default currency
-          const priceInDefault = Number(exp.amount_in_default_currency);
+          // Pre-tax base price, converted to the user's default currency.
+          const basePriceInDefault = Number(exp.amount) * Number(exp.exchange_rate || 1);
 
-          // Effective price (with tax)
-          const taxAmount = priceInDefault * Number(exp.tax_rate || 0);
-          const effectivePrice = priceInDefault + taxAmount;
+          // Effective price = final tax-inclusive amount, already computed and
+          // stored at save time as amount_in_default_currency. Do NOT re-apply
+          // tax here — that double-counted it (see BUG-01).
+          const effectivePrice = Number(exp.amount_in_default_currency);
 
           // Cumulative total
           cumulativeTotal += effectivePrice;
 
+          // Round per the default currency's convention (zero-decimal → whole
+          // units; others keep cents) instead of always ceiling (see PR review).
+          const cur = userCurrency as Currency;
           sheet.addRow([
             exp.date,
             exp.vendor,
             exp.item,
             exp.category,
             originalPrice,
-            Math.ceil(priceInDefault),
+            roundAmount(basePriceInDefault, cur),
             exp.payment_method || 'Unknown',
             exp.description || '',
-            Math.ceil(effectivePrice),
-            Math.ceil(cumulativeTotal),
+            roundAmount(effectivePrice, cur),
+            roundAmount(cumulativeTotal, cur),
           ]);
         });
 

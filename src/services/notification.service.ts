@@ -69,7 +69,14 @@ export class NotificationService {
         await this.bot!.sendMessage(this.chatId!, text, { parse_mode: 'Markdown' });
         this.lastSentAt = Date.now();
       } catch (err) {
-        console.error('❌ Failed to send error notification:', err);
+        // Markdown parsing can reject on unescaped content — don't lose the
+        // alert. Retry once as plain text.
+        try {
+          await this.bot!.sendMessage(this.chatId!, text);
+          this.lastSentAt = Date.now();
+        } catch (err2) {
+          console.error('❌ Failed to send error notification:', err2);
+        }
       }
     }
 
@@ -77,7 +84,10 @@ export class NotificationService {
   }
 
   private escapeMarkdown(text: string): string {
-    return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+    // Messages are sent with legacy parse_mode: 'Markdown', which only treats
+    // _ * ` [ as special. Escaping the wider MarkdownV2 set here (. ! - ( ) etc.)
+    // produced visible backslashes / send failures, so only escape legacy chars.
+    return text.replace(/[_*`[]/g, '\\$&');
   }
 }
 

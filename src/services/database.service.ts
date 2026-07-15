@@ -43,6 +43,13 @@ export class DatabaseService {
         .eq('telegram_id', telegramId)
         .single();
 
+      // .single() returns PGRST116 when no row matches — that's expected and
+      // means "create a new user". Any other error is a real failure (network,
+      // permissions, etc.) and must be thrown, not treated as "user not found".
+      if (selectError && selectError.code !== 'PGRST116') {
+        throw selectError;
+      }
+
       if (existingUser) {
         // Update last_active_at
         await this.supabase
@@ -354,6 +361,7 @@ export class DatabaseService {
         return 1.0;
       }
 
+      // Try direct rate first
       const { data, error } = await this.supabase
         .from('exchange_rates')
         .select('rate')
@@ -363,12 +371,46 @@ export class DatabaseService {
         .limit(1)
         .single();
 
-      if (error) {
-        console.warn(`⚠️ No exchange rate found for ${fromCurrency} → ${toCurrency}, using 1.0`);
-        return 1.0;
+      if (!error && data) {
+        return Number(data.rate);
       }
 
-      return Number(data.rate);
+      // No direct rate — compute cross-rate via pivot currencies
+      const pivots: Currency[] = ['USD', 'JPY', 'SGD'];
+      for (const pivot of pivots) {
+        if (pivot === fromCurrency || pivot === toCurrency) continue;
+
+        const { data: pivotToFrom } = await this.supabase
+          .from('exchange_rates')
+          .select('rate')
+          .eq('from_currency', pivot)
+          .eq('to_currency', fromCurrency)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        const { data: pivotToTarget } = await this.supabase
+          .from('exchange_rates')
+          .select('rate')
+          .eq('from_currency', pivot)
+          .eq('to_currency', toCurrency)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (pivotToFrom?.rate && pivotToTarget?.rate) {
+          const crossRate = Number(pivotToTarget.rate) / Number(pivotToFrom.rate);
+          console.log(`📊 Cross-rate ${fromCurrency}→${toCurrency} via ${pivot}: ${crossRate.toFixed(6)}`);
+          return crossRate;
+        }
+      }
+
+      console.warn(`⚠️ No exchange rate found for ${fromCurrency} → ${toCurrency}, using 1.0 (converted total will be wrong)`);
+      notifier.notify(
+        'Exchange Rate',
+        `No rate for ${fromCurrency} → ${toCurrency}; fell back to 1.0. Converted amount stored is incorrect.`
+      );
+      return 1.0;
     } catch (error) {
       console.error('❌ Error getting exchange rate:', error);
       return 1.0;

@@ -12,39 +12,24 @@ export type TaxTimingResponse = 'before' | 'after' | 'unknown';
 export function normalizeYesNo(input: string): YesNoResponse {
   const cleaned = input.toLowerCase().trim();
 
-  // Yes patterns
-  const yesPatterns = [
-    // English
+  const exactYes = [
     'yes', 'y', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'correct',
-    // Japanese
     'はい', 'hai', 'うん', 'un', 'そう', 'sou', 'そうです', 'soudesu',
-    'ええ', 'ee', 'オッケー', 'okkē', 'いいえす', 'ok',
-    // Indonesian
+    'ええ', 'ee', 'オッケー', 'okkē', 'いいえす',
     'ya', 'iya', 'iye', 'yoi', 'betul', 'benar', 'oke', 'baik',
-    // Vietnamese
     'có', 'co', 'vâng', 'vang', 'đúng', 'dung', 'được', 'duoc',
   ];
 
-  // No patterns
-  const noPatterns = [
-    // English
+  const exactNo = [
     'no', 'n', 'nah', 'nope', 'not', 'negative',
-    // Japanese
     'いいえ', 'iie', 'いや', 'iya', 'ううん', 'uun', 'ちがう', 'chigau',
     '違う', 'いえ', 'ie', 'ノー', 'no-',
-    // Indonesian
     'tidak', 'tak', 'nggak', 'enggak', 'gak', 'bukan', 'ndak',
-    // Vietnamese
     'không', 'khong', 'không có', 'khong co', 'ko', 'hok',
   ];
 
-  if (yesPatterns.some(pattern => cleaned.includes(pattern))) {
-    return 'yes';
-  }
-
-  if (noPatterns.some(pattern => cleaned.includes(pattern))) {
-    return 'no';
-  }
+  if (exactYes.includes(cleaned)) return 'yes';
+  if (exactNo.includes(cleaned)) return 'no';
 
   return 'unknown';
 }
@@ -111,34 +96,14 @@ export function isCancelIntent(input: string): boolean {
     'キャンセル', 'kyanseru', 'やめ', 'yame', 'やめる', 'yameru',
     '中止', 'chuushi', 'スキップ', 'sukippu', '戻る', 'modoru',
     // Indonesian
-    'batal', 'batalkan', 'lewat', 'lewati', 'skip', 'stop',
+    'batal', 'batalkan', 'lewat', 'lewati',
     'gak jadi', 'nggak jadi', 'kembali',
     // Vietnamese
     'hủy', 'huy', 'bỏ qua', 'bo qua', 'thôi', 'thoi',
     'dừng', 'dung', 'quay lại', 'quay lai',
   ];
 
-  return cancelPatterns.some(pattern => cleaned.includes(pattern));
-}
-
-/**
- * Detect if text mentions tax
- */
-export function mentionsTax(input: string): boolean {
-  const cleaned = input.toLowerCase().trim();
-
-  const taxKeywords = [
-    // English
-    'tax', 'vat', 'gst',
-    // Japanese
-    '税', 'zei', '消費税', 'shouhizei', 'しょうひぜい',
-    // Indonesian
-    'pajak', 'ppn',
-    // Vietnamese
-    'thuế', 'thue', 'vat',
-  ];
-
-  return taxKeywords.some(keyword => cleaned.includes(keyword));
+  return cancelPatterns.includes(cleaned);
 }
 
 /**

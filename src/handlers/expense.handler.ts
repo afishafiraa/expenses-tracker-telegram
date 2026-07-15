@@ -9,8 +9,7 @@ import {
   isCancelIntent,
   getMultiLangMessage,
 } from '../utils/language.js';
-
-const DEFAULT_CURRENCY: Currency = 'JPY';
+import { DEFAULT_CURRENCY, roundAmount, parseAmount } from '../utils/currency.js';
 
 /**
  * Handles all expense-related conversation flows
@@ -37,14 +36,14 @@ export class ExpenseHandler {
   ): Promise<void> {
     const data = state.data as any;
 
-    // Extract number from input
-    const amountMatch = input.match(/\d+(\.\d+)?/);
-    if (!amountMatch) {
+    // Extract number from input (tolerates thousands separators, e.g. "1,500")
+    const amount = parseAmount(input);
+    if (amount === null) {
       await this.bot.sendMessage(chatId, "Sorry, I didn't get that. How much did it cost? (just the number)");
       return;
     }
 
-    data.amount = parseFloat(amountMatch[0]);
+    data.amount = amount;
     data.missing = (data.missing || []).filter((m: string) => m !== 'amount');
 
     // Check if tax rate mentioned but amount not specified
@@ -60,16 +59,9 @@ export class ExpenseHandler {
     } else if (!data.payment_method) {
       await this.database.setConversationState(user.id, 'awaiting_payment', data);
       await this.bot.sendMessage(chatId, 'How did you pay?');
-    } else if (data.has_tax === undefined || data.has_tax === false) {
-      // Always ask about tax if not yet answered
-      data.has_tax = undefined;
-      await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', data);
-      await this.bot.sendMessage(
-        chatId,
-        `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
-      );
     } else {
-      // All info collected
+      // All basic info collected — go to confirmation (tax can be added inline)
+      if (!data.tax_included) data.tax_included = true;
       await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
       await this.sendConfirmation(chatId, user, data);
     }
@@ -91,15 +83,8 @@ export class ExpenseHandler {
     if (!data.payment_method) {
       await this.database.setConversationState(user.id, 'awaiting_payment', data);
       await this.bot.sendMessage(chatId, 'How did you pay?');
-    } else if (data.has_tax === undefined || data.has_tax === false) {
-      // Always ask about tax if not yet answered
-      data.has_tax = undefined;
-      await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', data);
-      await this.bot.sendMessage(
-        chatId,
-        `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
-      );
     } else {
+      if (!data.tax_included) data.tax_included = true;
       await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
       await this.sendConfirmation(chatId, user, data);
     }
@@ -118,18 +103,9 @@ export class ExpenseHandler {
     data.payment_method = normalizePaymentMethod(input);
     data.missing = (data.missing || []).filter((m: string) => m !== 'payment method');
 
-    // Always ask about tax if not yet answered
-    if (data.has_tax === undefined || data.has_tax === false) {
-      data.has_tax = undefined;
-      await this.database.setConversationState(user.id, 'awaiting_tax_inclusion', data);
-      await this.bot.sendMessage(
-        chatId,
-        `Does this purchase include tax?\n\n${getMultiLangMessage('yes_no')}`
-      );
-    } else {
-      await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
-      await this.sendConfirmation(chatId, user, data);
-    }
+    if (!data.tax_included) data.tax_included = true;
+    await this.database.setConversationState(user.id, 'awaiting_confirmation', data);
+    await this.sendConfirmation(chatId, user, data);
   }
 
   /**
@@ -248,7 +224,8 @@ export class ExpenseHandler {
 
     if (response === 'before') {
       data.tax_included = false;
-      const total = Math.ceil(data.amount * (1 + data.tax_rate));
+      const cur = (data.currency || DEFAULT_CURRENCY) as Currency;
+      const total = roundAmount(data.amount * (1 + data.tax_rate), cur);
       await this.bot.sendMessage(
         chatId,
         `✅ Got it! Price is before tax.\nFinal amount: ${total} ${data.currency || 'JPY'}`
@@ -257,9 +234,11 @@ export class ExpenseHandler {
       await this.sendConfirmation(chatId, user, data);
     } else if (response === 'after') {
       data.tax_included = true;
-      const basePrice = Math.ceil(data.amount / (1 + data.tax_rate));
-      const originalAmount = Math.ceil(data.amount);
+      const cur2 = (data.currency || DEFAULT_CURRENCY) as Currency;
+      const basePrice = roundAmount(data.amount / (1 + data.tax_rate), cur2);
+      const originalAmount = roundAmount(data.amount, cur2);
       data.amount = basePrice;
+      data.total_paid = originalAmount;
       await this.bot.sendMessage(
         chatId,
         `✅ Got it! Price is after tax.\nBase price: ${basePrice} ${data.currency || 'JPY'}\nTotal paid: ${originalAmount} ${data.currency || 'JPY'}`
@@ -278,22 +257,19 @@ export class ExpenseHandler {
    * Send expense confirmation message
    */
   private async sendConfirmation(chatId: number, user: User, data: any): Promise<void> {
-    const currency = data.currency || user.default_currency || DEFAULT_CURRENCY;
-    const amount = Math.ceil(data.amount);
-    const taxInfo = data.tax_rate && data.tax_rate > 0
-      ? `\nTax: ${(data.tax_rate * 100).toFixed(0)}% (${data.tax_included ? 'included' : 'excluded'})`
-      : '';
+    const currency = (data.currency || user.default_currency || DEFAULT_CURRENCY) as Currency;
+    const amount = roundAmount(data.amount, currency);
+
+    let amountDisplay = `${amount} ${currency}`;
+    if (data.tax_rate && data.tax_rate > 0 && data.total_paid) {
+      amountDisplay = `${data.total_paid} ${currency} (base ${amount} + ${(data.tax_rate * 100).toFixed(0)}% tax)`;
+    } else if (data.tax_rate && data.tax_rate > 0) {
+      amountDisplay = `${amount} ${currency} + ${(data.tax_rate * 100).toFixed(0)}% tax`;
+    }
 
     await this.bot.sendMessage(
       chatId,
-      `📝 Please confirm:
-
-Item: ${data.item}
-Amount: ${amount} ${currency}${taxInfo}
-Vendor: ${data.vendor}
-Payment: ${data.payment_method}
-
-Is this correct? (Yes/No)`
+      `📝 Please confirm:\n\nItem: ${data.item}\nAmount: ${amountDisplay}\nVendor: ${data.vendor}\nPayment: ${data.payment_method}\n\nIs this correct? (Yes/No)\n💡 To add/edit tax, reply "tax 10%" or "no tax"`
     );
   }
 }

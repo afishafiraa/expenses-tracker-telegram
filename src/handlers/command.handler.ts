@@ -84,7 +84,8 @@ Let's track your expenses! 💰`
 • /totalspend - Show monthly total & breakdown
 • /profile - View your profile & stats
 • /setcurrency [CODE] - Change default currency
-• /export - Generate quarterly Excel report
+• /export - Generate quarterly Excel report (try /export prev or /export Q1)
+• /cancel - Stop the current action (e.g. a half-entered expense)
 • /deactivate - Reset account & delete all data
 
 Need help? Just send me your expenses! 🚀`
@@ -240,15 +241,44 @@ ${categoryLines.join('\n')}`
     const chatId = msg.chat.id;
 
     try {
-      await this.bot.sendMessage(chatId, '📊 Generating your quarterly expense report...');
-
       const userName = user.nickname || user.first_name || 'User';
       const userCurrency = user.default_currency || DEFAULT_CURRENCY;
+
+      // Parse optional quarter argument: /export Q1, /export prev, /export Q4 2025
+      const text = (msg.text || '').trim();
+      const parts = text.split(/\s+/).slice(1); // Remove /export
+      let targetQuarter: number | undefined;
+      let targetYear: number | undefined;
+
+      if (parts.length > 0) {
+        const arg = parts[0].toLowerCase();
+        if (arg === 'prev' || arg === 'previous') {
+          const now = new Date();
+          const currentQ = Math.ceil((now.getMonth() + 1) / 3);
+          if (currentQ === 1) {
+            targetQuarter = 4;
+            targetYear = now.getFullYear() - 1;
+          } else {
+            targetQuarter = currentQ - 1;
+            targetYear = now.getFullYear();
+          }
+        } else {
+          const qMatch = arg.match(/^q([1-4])$/);
+          if (qMatch) {
+            targetQuarter = parseInt(qMatch[1]);
+            targetYear = parts[1] ? parseInt(parts[1]) : new Date().getFullYear();
+          }
+        }
+      }
+
+      await this.bot.sendMessage(chatId, '📊 Generating your quarterly expense report...');
 
       const { filePath, quarterInfo } = await this.exportService.exportToExcel(
         user.id,
         userName,
-        userCurrency
+        userCurrency,
+        targetQuarter,
+        targetYear
       );
 
       await this.bot.sendDocument(chatId, filePath, {
@@ -264,9 +294,13 @@ ${categoryLines.join('\n')}`
 
       console.log(`✅ Excel file sent to user ${user.telegram_id}`);
 
-      const fs = await import('fs');
-      fs.unlinkSync(filePath);
-      console.log(`🗑️ Cleaned up temp file: ${filePath}`);
+      const fs = await import('fs/promises');
+      try {
+        await fs.unlink(filePath);
+        console.log(`🗑️ Cleaned up temp file: ${filePath}`);
+      } catch {
+        console.warn(`⚠️ Could not clean up temp file: ${filePath}`);
+      }
     } catch (error) {
       console.error('❌ Error exporting report:', error);
       await this.bot.sendMessage(

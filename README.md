@@ -6,13 +6,15 @@ Track your expenses by chatting with a Telegram bot. Send text messages or recei
 
 - Chat naturally to record expenses ("lunch 89 at 7-11")
 - Send receipt/invoice photos (AI reads and extracts data)
+- OCR-first extraction — Cloud Vision reads the text, Gemini parses it, with an image fallback for hard receipts
 - Multi-currency support (13 Asian/SEA currencies + USD)
 - Automatic exchange rate conversion (updated daily)
 - Monthly spending summary with category breakdown
 - Quarterly Excel export
 - Cloud Vision receipt validation (rejects non-receipt photos)
-- Tax handling (before/after tax calculation, multi-country support)
+- Tax handling — inline `tax 10%` / `no tax` at confirmation, plus before/after-tax calculation
 - Edit extracted data before saving (correct wrong items/amounts)
+- Cancel any in-progress action with `/cancel`
 - Image compression for faster processing
 
 ## Tech Stack
@@ -69,7 +71,8 @@ The bot starts in polling mode locally.
 | `/profile` | View your profile and stats |
 | `/setcurrency [CODE]` | Change default currency (e.g., `/setcurrency USD`) |
 | `/totalspend` | Monthly spending total and breakdown |
-| `/export` | Generate quarterly Excel report |
+| `/export` | Generate quarterly Excel report (try `/export prev` or `/export Q1`) |
+| `/cancel` | Stop the current action (e.g. a half-entered expense) |
 | `/deactivate` | Delete account and all data |
 
 ## Usage Examples
